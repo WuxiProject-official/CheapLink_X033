@@ -1,6 +1,6 @@
 /*
  *  USB Queue Middleware
- *  Copyright (C) 2022-2024  WuxiProject
+ *  Copyright (C) 2022-2025  WuxiProject
  *
  *  This program is free software: you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -32,16 +32,16 @@
 /*
  * UQ_QUEUELEN: Defines the queue length
  */
-#define UQ_QUEUELEN 	8
+#define UQ_QUEUELEN 8
 
 /*
  * UQ_PACKLEN_MAX: Defines the max length of USB packet received
  */
-#define UQ_PACKLEN_MAX 		DEF_USBD_FS_PACK_SIZE
+#define UQ_PACKLEN_MAX DEF_USBD_FS_PACK_SIZE
 
 // ##PORT_CONFIGURATION_END##
 
-extern void USBQueue_EpOUT_Handler(uint8_t len);
+extern void USBQueue_EpOUT_Handler (uint8_t len);
 extern void USBQueue_EpIN_Handler();
 extern void USBQueue_StatusReset();
 extern uint8_t USBQueue_DoProcess();

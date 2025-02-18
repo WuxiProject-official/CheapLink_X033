@@ -1,6 +1,6 @@
 /*
  *  Main function file for firmware of CheapLink_X033
- *  Copyright (C) 2022-2024  WuxiProject
+ *  Copyright (C) 2022-2025  WuxiProject
  *
  *  This program is free software: you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -22,19 +22,19 @@
 #include "task.h"
 
 #include "ch32x035_usbfs_device.h"
-#include "usbqueue.h" // 这个版本的USBQueue已经修改过。This version of USBQueue library has been modified.
+#include "usbqueue.h"  // 这个版本的USBQueue已经修改过。This version of USBQueue library has been modified.
 
 #include "DAP_config.h"
 #include "DAP.h"
 
 extern TaskHandle_t taskHandleLED;
-extern void task_LED(void *pvParameters);
+extern void task_LED (void *pvParameters);
 extern TaskHandle_t taskHandleDAP;
-extern void task_DAP(void *pvParameters);
+extern void task_DAP (void *pvParameters);
 extern TaskHandle_t taskHandleSER;
-extern void task_SER(void *pvParameters);
+extern void task_SER (void *pvParameters);
 
-extern void USBFS_IRQHandler(void) __attribute__((interrupt())) __attribute__((section(".highcode")));
+extern void USBFS_IRQHandler (void) __attribute__ ((interrupt())) __attribute__ ((section (".highcode")));
 
 int main(void)
 {
@@ -43,7 +43,7 @@ int main(void)
     Delay_Init();
 #if DEBUG
 #if SDI_PRINT == SDI_PR_CLOSE
-    USART_Printf_Init(921600);
+    USART_Printf_Init (921600);
 #else
     SDI_Printf_Enable();
 #endif
@@ -57,28 +57,36 @@ int main(void)
     {
         MySerNumInfo[12 + 2 * i] = snbuf[i];
     }
+
     USBFS_RCC_Init();
     USBFS_Device_Init(ENABLE, PWR_VDD_3V3);
     SetVTFIRQ((u32)USBFS_IRQHandler, USBFS_IRQn, 0, ENABLE);
     NVIC_EnableIRQ(USBFS_IRQn);
     DAP_Setup();
 
-    xTaskCreate((TaskFunction_t)task_LED, (const char *)"LED", (uint16_t)128,
-                (void *)NULL,
-                (UBaseType_t)1, (TaskHandle_t *)&taskHandleLED);
-    xTaskCreate((TaskFunction_t)task_DAP, (const char *)"DAP", (uint16_t)128,
-                (void *)NULL,
-                (UBaseType_t)3, (TaskHandle_t *)&taskHandleDAP);
+    xTaskCreate ((TaskFunction_t)task_LED,
+                 (const char *)"LED", (uint16_t)128,
+                 (void *)NULL,
+                 (UBaseType_t)1,
+                 (TaskHandle_t *)&taskHandleLED);
+    xTaskCreate ((TaskFunction_t)task_DAP,
+                 (const char *)"DAP",
+                 (uint16_t)128,
+                 (void *)NULL,
+                 (UBaseType_t)3,
+                 (TaskHandle_t *)&taskHandleDAP);
 #if DAP_WITH_CDC
-    xTaskCreate((TaskFunction_t)task_SER, (const char *)"SER", (uint16_t)128,
-                (void *)NULL,
-                (UBaseType_t)3, (TaskHandle_t *)&taskHandleSER);
+    xTaskCreate ((TaskFunction_t)task_SER,
+                 (const char *)"SER",
+                 (uint16_t)128,
+                 (void *)NULL,
+                 (UBaseType_t)3,
+                 (TaskHandle_t *)&taskHandleSER);
 #endif
 
     vTaskStartScheduler();
 
-    while (1)
-    {
+    while (1) {
         ;
     }
 }
