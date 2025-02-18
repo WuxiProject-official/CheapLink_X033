@@ -36,9 +36,12 @@ extern void task_SER (void *pvParameters);
 
 extern void USBFS_IRQHandler (void) __attribute__ ((interrupt())) __attribute__ ((section (".highcode")));
 
-int main(void)
-{
-    NVIC_PriorityGroupConfig(NVIC_PriorityGroup_0);
+static const char dec2hex_table[16] =
+    {'0', '1', '2', '3', '4', '5', '6', '7',
+     '8', '9', 'A', 'B', 'C', 'D', 'E', 'F'};
+
+__attribute__ ((noreturn)) int main (void) {
+    NVIC_PriorityGroupConfig (NVIC_PriorityGroup_0);
     SystemCoreClockUpdate();
     Delay_Init();
 #if DEBUG
@@ -47,21 +50,22 @@ int main(void)
 #else
     SDI_Printf_Enable();
 #endif
-    PRINT("SystemClk:%d\r\n", SystemCoreClock);
-    PRINT("ChipID:%08x\r\n", DBGMCU_GetCHIPID());
+    // Print hello info if in debug mode
+    PRINT ("CheapLink_X033 V1.0.0.0 running on CH32X035(%04X)-%08X%08X clk=%d\r\n",
+           DBGMCU_GetCHIPID() >> 16, X035CHIPSN1, X035CHIPSN2, SystemCoreClock);
+
 #endif
 
-    char snbuf[9];
-    snprintf(snbuf, 9, "%08X", (X035CHIPSN1 ^ ~X035CHIPSN2));
-    for (uint8_t i = 0; i < 8; i++)
-    {
-        MySerNumInfo[12 + 2 * i] = snbuf[i];
+    // Prepare USB desc SN
+    uint32_t chipNum = (X035CHIPSN1 ^ ~X035CHIPSN2);
+    for (uint8_t i = 0; i < 8; i++) {
+        MySerNumInfo[12 + 2 * i] = dec2hex_table[(chipNum >> ((7 - i) << 2)) & 0x0000000FUL];
     }
 
     USBFS_RCC_Init();
-    USBFS_Device_Init(ENABLE, PWR_VDD_3V3);
-    SetVTFIRQ((u32)USBFS_IRQHandler, USBFS_IRQn, 0, ENABLE);
-    NVIC_EnableIRQ(USBFS_IRQn);
+    USBFS_Device_Init (ENABLE, PWR_VDD_SupplyVoltage());
+    SetVTFIRQ ((u32)USBFS_IRQHandler, USBFS_IRQn, 0, ENABLE);
+    NVIC_EnableIRQ (USBFS_IRQn);
     DAP_Setup();
 
     xTaskCreate ((TaskFunction_t)task_LED,
