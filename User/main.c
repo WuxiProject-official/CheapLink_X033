@@ -58,7 +58,7 @@ int main(void)
         MySerNumInfo[12 + 2 * i] = snbuf[i];
     }
     USBFS_RCC_Init();
-    USBFS_Device_Init(ENABLE, PWR_VDD_3V3);
+    USBFS_Device_Init(ENABLE, PWR_VDD_SupplyVoltage());
     SetVTFIRQ((u32)USBFS_IRQHandler, USBFS_IRQn, 0, ENABLE);
     NVIC_EnableIRQ(USBFS_IRQn);
     DAP_Setup();
