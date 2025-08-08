@@ -20,11 +20,11 @@
     <nature>org.eclipse.cdt.managedbuilder.core.managedBuildNature</nature>
     <nature>org.eclipse.cdt.managedbuilder.core.ScannerConfigNature</nature>
   </natures>
+  <linkedResources/>
   <filteredResources>
     <filter>
-      <id>1595986042669</id>
       <name/>
-      <type>22</type>
+      <type>6</type>
       <matcher>
         <id>org.eclipse.ui.ide.multiFilter</id>
         <arguments>1.0-name-matches-false-false-*.wvproj</arguments>
