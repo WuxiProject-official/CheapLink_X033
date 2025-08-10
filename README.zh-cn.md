@@ -1,7 +1,7 @@
 # CheapLink_X033
 
 一个廉价的CMSIS-DAP调试器实现。
-To read English version of this file，please turn to [README.zh-cn.md](README.zh-cn.md)。  
+To read English version of this file，please turn to [README.md](README.md)。  
 
 ## 特性
 
