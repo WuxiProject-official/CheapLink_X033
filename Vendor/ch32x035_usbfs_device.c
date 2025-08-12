@@ -434,77 +434,8 @@ void USBFS_IRQHandler (void) {
                 switch (USBFS_SetupReqCode) {
                 /* get device/configuration/string/report/... descriptors */
                 case USB_GET_DESCRIPTOR:
-                    switch ((uint8_t)(USBFS_SetupReqValue >> 8)) {
-                    /* get usb device descriptor */
-                    case USB_DESCR_TYP_DEVICE:
-                        pUSBFS_Descr = MyDevDescr;
-                        len = DEF_USBD_DEVICE_DESC_LEN;
-                        break;
-
-                        /* get usb configuration descriptor */
-                    case USB_DESCR_TYP_CONFIG:
-                        pUSBFS_Descr = MyCfgDescr;
-                        len = DEF_USBD_CONFIG_DESC_LEN;
-                        break;
-
-                        /* get usb string descriptor */
-                    case USB_DESCR_TYP_STRING:
-                        switch ((uint8_t)(USBFS_SetupReqValue & 0xFF)) {
-                        /* Descriptor 0, Language descriptor */
-                        case DEF_STRING_DESC_LANG:
-                            pUSBFS_Descr = MyLangDescr;
-                            len = DEF_USBD_LANG_DESC_LEN;
-                            break;
-
-                            /* Descriptor 1, Manufacturers String descriptor */
-                        case DEF_STRING_DESC_MANU:
-                            pUSBFS_Descr = MyManuInfo;
-                            len = DEF_USBD_MANU_DESC_LEN;
-                            break;
-
-                            /* Descriptor 2, Product String descriptor */
-                        case DEF_STRING_DESC_PROD:
-                            pUSBFS_Descr = MyProdInfo;
-                            len = DEF_USBD_PROD_DESC_LEN;
-                            break;
-
-                            /* Descriptor 3, Serial-number String descriptor */
-                        case DEF_STRING_DESC_SERN:
-                            pUSBFS_Descr = MySerNumInfo;
-                            len = DEF_USBD_SN_DESC_LEN;
-                            break;
-
-#if DAP_WITH_CDC
-                        case 5:
-                            pUSBFS_Descr = StrDescCustom5;
-                            len = StrDescCustom5[0];
-                            break;
-#endif
-
-#if MSOS_DESC == 1
-                        case 0xee:
-                            pUSBFS_Descr = MsOs1Desc;
-                            len = MsOs1Desc[0];
-                            break;
-#endif
-                        default:
-                            errflag = 0xFF;
-                            break;
-                        }
-                        break;
-
-#if MSOS_DESC == 2
-                    case USB_DESCR_TYP_BOS:
-                        // BOS desc
-                        pUSBFS_Descr = MyBosDesc;
-                        len = DEF_USBD_BOS_DESC_LEN;
-                        break;
-#endif
-
-                    default:
-                        errflag = 0xFF;
-                        break;
-                    }
+                    // Call external descriptor func
+                    len = USB_GetDescBuf (USBFS_SetupReqValue, &pUSBFS_Descr, &errflag);
 
                     /* Copy Descriptors to Endp0 DMA buffer */
                     if (USBFS_SetupReqLen > len) {
