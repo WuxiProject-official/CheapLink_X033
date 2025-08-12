@@ -209,7 +209,7 @@
 				"clinker": {
 					"general": {
 						"scriptFiles": [
-							"${project}/Ld/Link_highcode_62k.ld"
+							"${project}/Ld/Link_highcode_46k.ld"
 						],
 						"do_not_use_standard_start_files": true,
 						"do_not_use_default_libraries": false,
@@ -243,7 +243,7 @@
 				"cpplinker": {
 					"general": {
 						"scriptFiles": [
-							"${project}/Ld/Link_highcode_62k.ld"
+							"${project}/Ld/Link_highcode_46k.ld"
 						],
 						"do_not_use_standard_start_files": true,
 						"do_not_use_default_libraries": false,
