@@ -119,7 +119,7 @@ void USBQueue_StatusReset() {
 #include "task.h"
 extern TaskHandle_t taskHandleDAP;
 
-void USBQueue_EpOUT_Handler (uint8_t len) {
+void USBQueue_EpOUT_Handler (uint8_t len,BaseType_t *taskWoken) {
     if (UQ_InQueue[UQ_InPtrIn][0] == ID_DAP_TransferAbort) {
         DAP_TransferAbort = 1U;
     } else {
@@ -130,7 +130,7 @@ void USBQueue_EpOUT_Handler (uint8_t len) {
             UQ_InPtrIn = 0;
         }
         UQ_InCntIn++;
-        xTaskNotifyFromISR (taskHandleDAP, 0x01, eSetBits, NULL);
+        xTaskNotifyFromISR (taskHandleDAP, 0x01, eSetBits, taskWoken);
     }
     if ((uint8_t)(UQ_InCntIn - UQ_InCntOut) != UQ_QUEUELEN) {
         USBQueue_SetEPDNAddr (UQ_InQueue[UQ_InPtrIn]);
@@ -160,17 +160,20 @@ uint8_t USBQueue_DoProcess() {
     uint8_t n, flagProcessed = 0;
     uint32_t taskFlag = 0;
     while (UQ_InCntIn != UQ_InCntOut) {  // Unhandled request in queue
-                                         // Prepare DAP cmds
+        // Prepare DAP cmds
         n = UQ_InPtrOut;
         while (UQ_InQueue[n][0] == ID_DAP_QueueCommands) {
             UQ_InQueue[n][0] = ID_DAP_ExecuteCommands;
             n++;
             if (n == UQ_QUEUELEN) {
+                // reached end
                 n = 0U;
             }
             if (n == UQ_InPtrIn) {
-                xTaskNotifyWait (0x0, 0xffffffffUL, (uint32_t *)&taskFlag, portMAX_DELAY);
+                // queue full
+                xTaskNotifyWait (0x0, 0x0000ffffUL, (uint32_t *)&taskFlag, portMAX_DELAY);
                 if (taskFlag & 0x80U) {
+                    // drop remained commands
                     break;
                 }
             }

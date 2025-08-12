@@ -29,6 +29,10 @@ extern void task_SER (void *pvParameters);
 
 extern void USBFS_IRQHandler (void) __attribute__ ((interrupt())) __attribute__ ((section (".highcode")));
 
+#if DAP_WITH_CDC
+extern void CDCSerial_QueueReset();
+#endif
+
 static const char dec2hex_table[16] =
     {'0', '1', '2', '3', '4', '5', '6', '7',
      '8', '9', 'A', 'B', 'C', 'D', 'E', 'F'};
@@ -49,12 +53,16 @@ __attribute__ ((noreturn)) int main (void) {
 
 #endif
 
+    USBQueue_StatusReset();
+#if DAP_WITH_CDC
+    CDCSerial_QueueReset();
+#endif
+
     // Prepare USB desc SN
     uint32_t chipNum = (X035CHIPSN1 ^ ~X035CHIPSN2);
     for (uint8_t i = 0; i < 8; i++) {
         MySerNumInfo[12 + 2 * i] = dec2hex_table[(chipNum >> ((7 - i) << 2)) & 0x0000000FUL];
     }
-
     USBFS_RCC_Init();
     USBFS_Device_Init (ENABLE, PWR_VDD_SupplyVoltage());
     SetVTFIRQ ((u32)USBFS_IRQHandler, USBFS_IRQn, 0, ENABLE);
