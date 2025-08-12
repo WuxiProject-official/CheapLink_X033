@@ -223,7 +223,7 @@ void USBFS_IRQHandler (void) {
             /* end-point 0 data in interrupt */
             case USBFS_UIS_TOKEN_IN | DEF_UEP0:
                 if (USBFS_SetupReqLen == 0) {
-                    USBFSD->UEP0_CTRL_H = USBFS_UEP_R_TOG | USBFS_UEP_R_RES_ACK;
+                    USBFSD->UEP0_CTRL_H = (USBFSD->UEP0_CTRL_H & ~ USBFS_UEP_R_RES_MASK) | USBFS_UEP_R_TOG | USBFS_UEP_R_RES_ACK;
                 }
                 if ((USBFS_SetupReqType & USB_REQ_TYP_MASK) != USB_REQ_TYP_STANDARD) {
                     if (USBFS_SetupReqType & USB_REQ_TYP_VENDOR) {
@@ -336,7 +336,7 @@ void USBFS_IRQHandler (void) {
                     }
                     if (USBFS_SetupReqLen == 0) {
                         USBFSD->UEP0_TX_LEN = 0;
-                        USBFSD->UEP0_CTRL_H = USBFS_UEP_T_TOG | USBFS_UEP_T_RES_ACK;
+                        USBFSD->UEP0_CTRL_H = (USBFSD->UEP0_CTRL_H & ~USBFS_UEP_T_RES_MASK) | USBFS_UEP_T_TOG | USBFS_UEP_T_RES_ACK;
                     }
                 }
                 break;
@@ -710,14 +710,14 @@ void USBFS_IRQHandler (void) {
                     len = (USBFS_SetupReqLen > DEF_USBD_UEP0_SIZE) ? DEF_USBD_UEP0_SIZE : USBFS_SetupReqLen;
                     USBFS_SetupReqLen -= len;
                     USBFSD->UEP0_TX_LEN = len;
-                    USBFSD->UEP0_CTRL_H = USBFS_UEP_T_TOG | USBFS_UEP_T_RES_ACK;
+                    USBFSD->UEP0_CTRL_H = (USBFSD->UEP0_CTRL_H & ~USBFS_UEP_T_RES_MASK) | USBFS_UEP_T_TOG | USBFS_UEP_T_RES_ACK;
                 } else {
                     /* rx */
                     if (USBFS_SetupReqLen == 0) {
                         USBFSD->UEP0_TX_LEN = 0;
-                        USBFSD->UEP0_CTRL_H = USBFS_UEP_T_TOG | USBFS_UEP_T_RES_ACK;
+                        USBFSD->UEP0_CTRL_H = (USBFSD->UEP0_CTRL_H & ~USBFS_UEP_T_RES_MASK) | USBFS_UEP_T_TOG | USBFS_UEP_T_RES_ACK;
                     } else {
-                        USBFSD->UEP0_CTRL_H = USBFS_UEP_R_TOG | USBFS_UEP_R_RES_ACK;
+                        USBFSD->UEP0_CTRL_H = (USBFSD->UEP0_CTRL_H & ~USBFS_UEP_R_RES_MASK) | USBFS_UEP_R_TOG | USBFS_UEP_R_RES_ACK;
                     }
                 }
             }
