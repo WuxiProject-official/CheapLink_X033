@@ -11,7 +11,8 @@
 			"description": "==Website: https://www.wch.cn/products/CH32X035.html?\\nROM(byte): 62K, SRAM(byte): 20K, CHIP PINS: 48, GPIO PORTS: 46.\\nWCH CH32X033 series of mainstream MCUs covers the needs of a large variety of applications in the industrial,medical and consumer markets. High performance with first-class peripherals and low-power,low-voltage operation is paired with a high level of integration at accessible prices with a simple architecture and easy-to-use tools.",
 			"link": "WCH-Link",
 			"peripheral_version": "==1.7",
-			"calibrateSupport": false
+			"calibrateSupport": false,
+			"calibrateCommand": ""
 		},
 		"linkedFolders": [],
 		"removedResources": [
@@ -208,7 +209,7 @@
 				"clinker": {
 					"general": {
 						"scriptFiles": [
-							"${project}/Ld/Link_highcode_62k.ld"
+							"${project}/Ld/Link_highcode_46k.ld"
 						],
 						"do_not_use_standard_start_files": true,
 						"do_not_use_default_libraries": false,
@@ -242,7 +243,7 @@
 				"cpplinker": {
 					"general": {
 						"scriptFiles": [
-							"${project}/Ld/Link_highcode_62k.ld"
+							"${project}/Ld/Link_highcode_46k.ld"
 						],
 						"do_not_use_standard_start_files": true,
 						"do_not_use_default_libraries": false,

@@ -38,7 +38,7 @@ uint8_t USBQueue_EPUpload (uint8_t *buf, uint16_t len) {
 }
 
 // Prepare buffer for OUT transaction.
-void USBQueue_SetEPDNAddr (uint8_t *buffer) {
+void USBQueue_SetEPDNAddr (volatile uint8_t *buffer) {
     USBFSD->UEP1_DMA = (uint32_t)buffer;
 }
 
@@ -61,24 +61,31 @@ void USBQueue_SetEPDNAck (FunctionalState state) {
 
 void memset_v (volatile void *p, int val, size_t len) {
     uint8_t val8 = val & 0xff;
-    uint32_t destAddr = (uint32_t)p;
     volatile uint8_t *ptr8 = (volatile uint8_t *)p;
-    int start_offset = destAddr & 0x00000003UL;
-    if (start_offset) {
-        // addr not aligned
-        len -= start_offset;
-        for (int i = 0; i < start_offset; i++)
+    if (len < 8) {
+        for (int i = 0; i < len; i++)
             ptr8[i] = val8;
-    }
-    uint32_t val32 = (val8 << 24) | (val8 << 16) | (val8 << 8) | (val8);
-    volatile uint32_t *ptr32 = (volatile uint32_t *)(destAddr + start_offset ? 4 : 0);
-    for (int i = 0; i < (len >> 2); i++)
-        ptr32[i] = val32;
-    size_t bytesLeft = len & 0x00000003UL;
-    ptr8 = (volatile uint8_t *)(ptr32 + (len >> 2));
-    if (bytesLeft) {
-        for (int i = 0; i < bytesLeft; i++)
-            ptr8[i] = val8;
+    } else {
+        uint32_t destAddr = (uint32_t)p;
+        int start_offset = destAddr & 0x00000003UL;
+        if (start_offset) {
+            // addr not aligned
+            len -= 4 - start_offset;
+            for (int i = 0; i < 4 - start_offset; i++)
+                ptr8[i] = val8;
+        }
+        // start from a word-aligned addr
+        volatile uint32_t *ptr32 = (volatile uint32_t *)((destAddr & 0xfffffffcUL) + (start_offset ? 4 : 0));
+        uint32_t val32 = (val8 << 24) | (val8 << 16) | (val8 << 8) | (val8);
+        for (int i = 0; i < (len >> 2); i++)
+            ptr32[i] = val32;
+        // handle tail bytes
+        size_t bytesLeft = len & 0x00000003UL;
+        if (bytesLeft) {
+            ptr8 = (volatile uint8_t *)(ptr32 + (len >> 2));
+            for (int i = 0; i < bytesLeft; i++)
+                ptr8[i] = val8;
+        }
     }
 }
 

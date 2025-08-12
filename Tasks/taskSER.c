@@ -61,7 +61,7 @@ StreamBufferHandle_t sbDown = NULL;
 SemaphoreHandle_t semaDmaTx = NULL;
 
 // Prepare buffer for OUT transaction.
-static void CDCSerial_SetEPDNAddr (uint8_t *buffer) {
+static void CDCSerial_SetEPDNAddr (volatile uint8_t *buffer) {
     USBFSD->UEP5_DMA = (uint32_t)buffer;
 }
 
@@ -327,6 +327,42 @@ void CDCSerial_InitUART (uint32_t baudrate, uint16_t databit, uint16_t paritybit
     NVIC_EnableIRQ (DMA1_Channel7_IRQn);
     USART_DMACmd (USART2, USART_DMAReq_Tx, ENABLE);
 #endif
+}
+
+int __attribute__((noinline)) CDCSerial_Init (uint8_t linecoding[8]) {
+    uint32_t baudrate = linecoding[0];
+    baudrate += ((uint32_t)linecoding[1] << 8);
+    baudrate += ((uint32_t)linecoding[2] << 16);
+    baudrate += ((uint32_t)linecoding[3] << 24);
+    uint16_t databit = linecoding[6], paritybit = linecoding[5], stopbit = linecoding[4];
+    if (
+        (baudrate < 800UL || baudrate > 1000000UL)  // out of 800-1M
+        || (databit != 0 && databit != 8)           // out of 8
+        || (paritybit > 2)                          // out of N,O,E
+        || (stopbit > 2)                            // out of 1,1.5,2
+    ) {
+        return 1;
+    } else {
+        if (databit == 8 || databit == 0)
+            databit = USART_WordLength_8b;
+        if (paritybit == 0)
+            paritybit = USART_Parity_No;
+        else if (paritybit == 1) {
+            paritybit = USART_Parity_Odd;
+            databit = USART_WordLength_9b;
+        } else if (paritybit == 2) {
+            paritybit = USART_Parity_Even;
+            databit = USART_WordLength_9b;
+        }
+        if (stopbit == 0)
+            stopbit = USART_StopBits_1;
+        else if (stopbit == 1)
+            stopbit = USART_StopBits_1_5;
+        else if (stopbit == 2)
+            stopbit = USART_StopBits_2;
+        CDCSerial_InitUART (baudrate, databit, paritybit, stopbit);
+        return 0;
+    }
 }
 
 void task_SER (void *pvParameters) {
