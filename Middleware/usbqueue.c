@@ -38,7 +38,7 @@ uint8_t USBQueue_EPUpload (uint8_t *buf, uint16_t len) {
 }
 
 // Prepare buffer for OUT transaction.
-void USBQueue_SetEPDNAddr (uint8_t *buffer) {
+void USBQueue_SetEPDNAddr (volatile uint8_t *buffer) {
     USBFSD->UEP1_DMA = (uint32_t)buffer;
 }
 

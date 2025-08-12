@@ -60,9 +60,7 @@ void USBFS_RCC_Init (void) {
 uint8_t CDC_linecoding[8];
 extern void CDCSerial_EpOUT_Handler (uint8_t len);
 extern void CDCSerial_EpIN_Handler();
-extern void CDCSerial_QueueReset();
-extern void CDCSerial_InitUART (uint32_t baudrate, uint16_t databit,
-                                uint16_t paritybit, uint16_t stopbit);
+extern int __attribute__((noinline)) CDCSerial_Init (uint8_t linecoding[8]);
 #endif
 
 /*********************************************************************
@@ -316,58 +314,19 @@ void USBFS_IRQHandler (void) {
                              1 byte: number of stop bits (0: 1 stop bit; 1: 1.5 stop bit; 2: 2 stop bits).
                              1 byte: number of parity bits (0: None; 1: Odd; 2: Even; 3: Mark; 4: Space).
                              1 byte: number of data bits (5,6,7,8,16); */
-                            CDC_linecoding[0] = USBFS_EP0_4Buf[0];
-                            CDC_linecoding[1] = USBFS_EP0_4Buf[1];
-                            CDC_linecoding[2] = USBFS_EP0_4Buf[2];
-                            CDC_linecoding[3] = USBFS_EP0_4Buf[3];
-                            CDC_linecoding[4] = USBFS_EP0_4Buf[4];
-                            CDC_linecoding[5] = USBFS_EP0_4Buf[5];
-                            CDC_linecoding[6] = USBFS_EP0_4Buf[6];
+                            // CDC_linecoding[0] = USBFS_EP0_4Buf[0];
+                            // CDC_linecoding[1] = USBFS_EP0_4Buf[1];
+                            // CDC_linecoding[2] = USBFS_EP0_4Buf[2];
+                            // CDC_linecoding[3] = USBFS_EP0_4Buf[3];
+                            // CDC_linecoding[4] = USBFS_EP0_4Buf[4];
+                            // CDC_linecoding[5] = USBFS_EP0_4Buf[5];
+                            // CDC_linecoding[6] = USBFS_EP0_4Buf[6];
+                            memcpy (CDC_linecoding, USBFS_EP0_4Buf, 7);
 
-                            uint32_t baudrate = USBFS_EP0_4Buf[0];
-                            baudrate += ((uint32_t)USBFS_EP0_4Buf[1] << 8);
-                            baudrate += ((uint32_t)USBFS_EP0_4Buf[2] << 16);
-                            baudrate += ((uint32_t)USBFS_EP0_4Buf[3] << 24);
-                            uint16_t databit = USBFS_EP0_4Buf[6], paritybit = USBFS_EP0_4Buf[5], stopbit = USBFS_EP0_4Buf[4];
-                            if (baudrate < 800UL || baudrate > 1000000UL) {
-                                // 800-1M
+                            if (CDCSerial_Init (CDC_linecoding)) {  // Wrong parameters
                                 USBFS_SetupReqLen = 1;
                                 USBFSD->UEP0_TX_LEN = 0;
                                 USBFSD->UEP0_CTRL_H = USBFS_UEP_T_TOG | USBFS_UEP_T_RES_STALL;
-                            } else if (databit != 0 && databit != 8) {
-                                // 8
-                                USBFS_SetupReqLen = 1;
-                                USBFSD->UEP0_TX_LEN = 0;
-                                USBFSD->UEP0_CTRL_H = USBFS_UEP_T_TOG | USBFS_UEP_T_RES_STALL;
-                            } else if (paritybit > 2) {
-                                // N,O,E
-                                USBFS_SetupReqLen = 1;
-                                USBFSD->UEP0_TX_LEN = 0;
-                                USBFSD->UEP0_CTRL_H = USBFS_UEP_T_TOG | USBFS_UEP_T_RES_STALL;
-                            } else if (stopbit > 2) {
-                                // 1,1.5,2
-                                USBFS_SetupReqLen = 1;
-                                USBFSD->UEP0_TX_LEN = 0;
-                                USBFSD->UEP0_CTRL_H = USBFS_UEP_T_TOG | USBFS_UEP_T_RES_STALL;
-                            } else {
-                                if (databit == 8 || databit == 0)
-                                    databit = USART_WordLength_8b;
-                                if (paritybit == 0)
-                                    paritybit = USART_Parity_No;
-                                else if (paritybit == 1) {
-                                    paritybit = USART_Parity_Odd;
-                                    databit = USART_WordLength_9b;
-                                } else if (paritybit == 2) {
-                                    paritybit = USART_Parity_Even;
-                                    databit = USART_WordLength_9b;
-                                }
-                                if (stopbit == 0)
-                                    stopbit = USART_StopBits_1;
-                                else if (stopbit == 1)
-                                    stopbit = USART_StopBits_1_5;
-                                else if (stopbit == 2)
-                                    stopbit = USART_StopBits_2;
-                                CDCSerial_InitUART (baudrate, databit, paritybit, stopbit);
                             }
                         }
 #endif

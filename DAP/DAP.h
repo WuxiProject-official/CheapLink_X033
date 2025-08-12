@@ -334,24 +334,11 @@ extern void DAP_Setup(void);
 #ifndef DELAY_SLOW_CYCLES
 #define DELAY_SLOW_CYCLES       4U      // Number of cycles for one iteration
 #endif
-//#if defined(__CC_ARM)
 __STATIC_FORCEINLINE void PIN_DELAY_SLOW(uint32_t delay)
 {
 uint32_t count = delay;
 while (--count){__NOP();}
 }
-//#else
-//__STATIC_FORCEINLINE void PIN_DELAY_SLOW(uint32_t delay)
-//{
-//__ASM volatile (
-//		".syntax unified\n"
-//		"0:\n\t"
-//		"subs %0,%0,#1\n\t"
-//		"bne  0b\n"
-//		: "+l" (delay) : : "cc"
-//);
-//}
-//#endif
 
 // Fixed delay for fast clock generation
 #ifndef DELAY_FAST_CYCLES
