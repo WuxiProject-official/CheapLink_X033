@@ -70,4 +70,6 @@ extern const uint8_t WCID1DescEx[];
 extern const uint8_t MyBosDesc[];
 extern const uint8_t MyWinusbDesc[];
 
+extern uint16_t __attribute__ ((noinline)) USB_GetDescBuf (volatile uint16_t USBFS_SetupReqValue, const uint8_t **pUSBFS_Descr, uint8_t *errflag);
+
 #endif /* USER_USB_DESC_H_ */

@@ -1,8 +1,8 @@
 /********************************** (C) COPYRIGHT  *******************************
  * File Name          : core_riscv.h
  * Author             : WCH
- * Version            : V1.0.1
- * Date               : 2023/12/26
+ * Version            : V1.0.2
+ * Date               : 2025/03/10
  * Description        : RISC-V V4 Core Peripheral Access Layer Header File for CH32X035
 *********************************************************************************
 * Copyright (c) 2021 Nanjing Qinheng Microelectronics Co., Ltd.
@@ -141,6 +141,7 @@ __attribute__( ( always_inline ) ) RV_STATIC_INLINE void __enable_irq()
 __attribute__( ( always_inline ) ) RV_STATIC_INLINE void __disable_irq()
 {
   __asm volatile ("csrc 0x800, %0" : : "r" (0x88) );
+  __asm volatile ("fence.i");
 }
 
 /*********************************************************************
@@ -181,6 +182,7 @@ __attribute__( ( always_inline ) ) RV_STATIC_INLINE void NVIC_EnableIRQ(IRQn_Typ
 __attribute__( ( always_inline ) ) RV_STATIC_INLINE void NVIC_DisableIRQ(IRQn_Type IRQn)
 {
   NVIC->IRER[((uint32_t)(IRQn) >> 5)] = (1 << ((uint32_t)(IRQn) & 0x1F));
+  __asm volatile ("fence.i");
 }
 
 /*********************************************************************
@@ -262,32 +264,18 @@ __attribute__( ( always_inline ) ) RV_STATIC_INLINE uint32_t NVIC_GetActive(IRQn
  * @brief   Set Interrupt Priority
  *
  * @param   IRQn - Interrupt Numbers
- *          interrupt nesting enable(CSR-0x804 bit1 = 1)
+ *          interrupt nesting enable(CSR-0x804 bit1 = 1 bit[3:2] = 1)
  *            priority - bit[7] - Preemption Priority
- *                       bit[6:5] - Sub priority
- *                       bit[4:0] - Reserve
- *          interrupt nesting disable(CSR-0x804 bit1 = 0)
- *            priority - bit[7:5] - Sub priority
- *                       bit[4:0] - Reserve
- *
+ *                       bit[6:4] - Sub priority
+ *                       bit[3:0] - Reserve
+ *          interrupt nesting disable(CSR-0x804 bit1 = 0 bit[3:2] = 0)
+ *            priority - bit[7:4] - Sub priority
+ *                       bit[3:0] - Reserve
  * @return  none
  */
 __attribute__( ( always_inline ) ) RV_STATIC_INLINE void NVIC_SetPriority(IRQn_Type IRQn, uint8_t priority)
 {
   NVIC->IPRIOR[(uint32_t)(IRQn)] = priority;
-}
-
-/*********************************************************************
- * @fn      __WFI
- *
- * @brief   Wait for Interrupt
- *
- * @return  none
- */
-__attribute__( ( always_inline ) ) RV_STATIC_INLINE void __WFI(void)
-{
-  NVIC->SCTLR &= ~(1<<3);	// wfi
-  asm volatile ("wfi");
 }
 
 /*********************************************************************
@@ -315,8 +303,23 @@ __attribute__( ( always_inline ) ) RV_STATIC_INLINE void _SEV(void)
  */
 __attribute__( ( always_inline ) ) RV_STATIC_INLINE void _WFE(void)
 {
+  __attribute__((unused)) uint32_t t=0;
+
+  if(NVIC->SCTLR & (1 << 2))
+  {
+    __disable_irq();
+    t = *(__IO uint32_t*)0x40010404; 
+    *(__IO uint32_t*)0x40010404 |= *(__IO uint32_t*)0x40010400;
+  }
+
   NVIC->SCTLR |= (1<<3);
   asm volatile ("wfi");
+
+  if(NVIC->SCTLR & (1 << 2))
+  {
+    *(__IO uint32_t*)0x40010404 = t;
+    __enable_irq();
+  }
 }
 
 /*********************************************************************
@@ -328,9 +331,38 @@ __attribute__( ( always_inline ) ) RV_STATIC_INLINE void _WFE(void)
  */
 __attribute__( ( always_inline ) ) RV_STATIC_INLINE void __WFE(void)
 {
+  __attribute__((unused)) uint32_t t=0;
+
+  if(NVIC->SCTLR & (1 << 2))
+  {
+    __disable_irq();
+    t = *(__IO uint32_t*)0x40010404; 
+    *(__IO uint32_t*)0x40010404 |= *(__IO uint32_t*)0x40010400;
+  }
+
   _SEV();
-  _WFE();
-  _WFE();
+  NVIC->SCTLR |= (1<<3);
+  asm volatile ("wfi");
+  NVIC->SCTLR |= (1<<3);
+  asm volatile ("wfi");
+
+  if(NVIC->SCTLR & (1 << 2))
+  {
+    *(__IO uint32_t*)0x40010404 = t;
+      __enable_irq();
+  }
+}
+
+/*********************************************************************
+ * @fn      __WFI
+ *
+ * @brief   Wait for Interrupt
+ *
+ * @return  none
+ */
+__attribute__( ( always_inline ) ) RV_STATIC_INLINE void __WFI(void)
+{
+  __WFE();
 }
 
 /*********************************************************************
