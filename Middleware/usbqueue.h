@@ -34,7 +34,8 @@
 
 // ##PORT_CONFIGURATION_END##
 
-extern void USBQueue_EpOUT_Handler (uint8_t len);
+#include "FreeRTOS.h"
+extern void USBQueue_EpOUT_Handler (uint8_t len,BaseType_t *taskWoken);
 extern void USBQueue_EpIN_Handler();
 extern void USBQueue_StatusReset();
 extern uint8_t USBQueue_DoProcess();
