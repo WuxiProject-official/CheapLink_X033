@@ -42,7 +42,7 @@ volatile uint8_t USBFS_Endp_Busy[DEF_UEP_NUM];
 
 /******************************************************************************/
 /* Interrupt Service Routine Declaration*/
-void USBFS_IRQHandler (void) __attribute__ ((interrupt())) __attribute__ ((section (".highcode")));
+void USBFS_IRQHandler (void) __attribute__((interrupt())) __attribute__ ((section (".highcode")));
 
 /*********************************************************************
  * @fn      USBFS_RCC_Init
@@ -58,9 +58,9 @@ void USBFS_RCC_Init (void) {
 
 #if DAP_WITH_CDC
 uint8_t CDC_linecoding[8];
-extern void CDCSerial_EpOUT_Handler (uint8_t len);
-extern void CDCSerial_EpIN_Handler();
-extern int __attribute__((noinline)) CDCSerial_Init (uint8_t linecoding[8]);
+extern void CDCSerial_EpOUT_Handler (uint8_t len, BaseType_t *taskWoken);
+extern void CDCSerial_EpIN_Handler (BaseType_t *taskWoken);
+extern int __attribute__ ((noinline)) CDCSerial_Init (uint8_t linecoding[8]);
 #endif
 
 /*********************************************************************
@@ -96,11 +96,6 @@ void USBFS_Device_Endp_Init (void) {
     for (uint8_t i = 0; i < DEF_UEP_NUM; i++) {
         USBFS_Endp_Busy[i] = 0;
     }
-
-    USBQueue_StatusReset();
-#if DAP_WITH_CDC
-    CDCSerial_QueueReset();
-#endif
 }
 
 /*********************************************************************
@@ -198,6 +193,10 @@ uint8_t USBFS_Endp_DataUp (uint8_t endp, uint8_t *pbuf, uint16_t len,
 
 #include "FreeRTOS.h"
 #include "task.h"
+extern TaskHandle_t taskHandleDAP;
+#if DAP_WITH_CDC
+extern TaskHandle_t taskHandleSER;
+#endif
 extern TaskHandle_t taskHandleLED;
 
 /*********************************************************************
@@ -208,9 +207,11 @@ extern TaskHandle_t taskHandleLED;
  * @return  none
  */
 void USBFS_IRQHandler (void) {
+    GET_INT_SP();
 
     uint8_t intflag, intst, errflag;
     uint16_t len;
+    BaseType_t taskWoken = pdFALSE;
 
     intflag = USBFSD->INT_FG;
     intst = USBFSD->INT_ST;
@@ -223,7 +224,7 @@ void USBFS_IRQHandler (void) {
             /* end-point 0 data in interrupt */
             case USBFS_UIS_TOKEN_IN | DEF_UEP0:
                 if (USBFS_SetupReqLen == 0) {
-                    USBFSD->UEP0_CTRL_H = (USBFSD->UEP0_CTRL_H & ~ USBFS_UEP_R_RES_MASK) | USBFS_UEP_R_TOG | USBFS_UEP_R_RES_ACK;
+                    USBFSD->UEP0_CTRL_H = (USBFSD->UEP0_CTRL_H & ~USBFS_UEP_R_RES_MASK) | USBFS_UEP_R_TOG | USBFS_UEP_R_RES_ACK;
                 }
                 if ((USBFS_SetupReqType & USB_REQ_TYP_MASK) != USB_REQ_TYP_STANDARD) {
                     if (USBFS_SetupReqType & USB_REQ_TYP_VENDOR) {
@@ -287,7 +288,7 @@ void USBFS_IRQHandler (void) {
                 USBFSD->UEP3_CTRL_H ^= USBFS_UEP_T_TOG;
                 USBFSD->UEP3_CTRL_H = (USBFSD->UEP3_CTRL_H & ~USBFS_UEP_T_RES_MASK) | USBFS_UEP_T_RES_NAK;
                 USBFS_Endp_Busy[DEF_UEP3] = 0;
-                CDCSerial_EpIN_Handler();
+                CDCSerial_EpIN_Handler (&taskWoken);
                 break;
 #endif
 
@@ -344,14 +345,14 @@ void USBFS_IRQHandler (void) {
                 /* end-point 1 data out interrupt */
             case USBFS_UIS_TOKEN_OUT | DEF_UEP1:
                 USBFSD->UEP1_CTRL_H ^= USBFS_UEP_R_TOG;
-                USBQueue_EpOUT_Handler (USBFSD->RX_LEN);
+                USBQueue_EpOUT_Handler (USBFSD->RX_LEN, &taskWoken);
                 break;
 
 #if DAP_WITH_CDC
                 /* end-point 5 data out interrupt */
             case USBFS_UIS_TOKEN_OUT | DEF_UEP5:
                 USBFSD->UEP5_CTRL_H ^= USBFS_UEP_R_TOG;
-                CDCSerial_EpOUT_Handler (USBFSD->RX_LEN);
+                CDCSerial_EpOUT_Handler (USBFSD->RX_LEN, &taskWoken);
                 break;
 #endif
 
@@ -463,8 +464,7 @@ void USBFS_IRQHandler (void) {
                 case USB_SET_CONFIGURATION:
                     USBFS_DevConfig = (uint8_t)(USBFS_SetupReqValue & 0xFF);
                     USBFS_DevEnumStatus = 0x01;
-                    xTaskNotifyFromISR (taskHandleLED, 0x31,
-                                        eSetValueWithOverwrite, NULL);  // LED: Yellow Still
+                    xTaskNotifyFromISR (taskHandleLED, 0x31, eSetValueWithOverwrite, NULL);  // LED: Yellow Still
                     break;
 
                     /* Clear or disable one usb feature */
@@ -668,17 +668,18 @@ void USBFS_IRQHandler (void) {
         USBFSD->DEV_ADDR = 0;
         USBFS_Device_Endp_Init();
         USBFSD->INT_FG = USBFS_UIF_BUS_RST;
-        USBQueue_StatusReset();
-#if DAP_WITH_CDC
-        CDCSerial_QueueReset();
-#endif
+        // Notify tasks
+        xTaskNotifyFromISR (taskHandleDAP, 0x00010000UL, eSetBits, &taskWoken);
+        xTaskNotifyFromISR (taskHandleSER, 0x00010000UL, eSetBits, &taskWoken);
         xTaskNotifyFromISR (taskHandleLED, 0x32, eSetValueWithOverwrite, NULL);  // LED: Yellow 1Hz
     } else if (intflag & USBFS_UIF_SUSPEND) {
         /* usb suspend interrupt processing */
         if (USBFSD->MIS_ST & USBFS_UMS_SUSPEND) {
             USBFS_DevSleepStatus |= 0x02;
-            xTaskNotifyFromISR (taskHandleLED, 0x32, eSetValueWithOverwrite,
-                                NULL);  // LED: Yellow 1Hz
+            // Notify tasks
+            xTaskNotifyFromISR (taskHandleDAP, 0x00020000UL, eSetBits, &taskWoken);
+            xTaskNotifyFromISR (taskHandleSER, 0x00020000UL, eSetBits, &taskWoken);
+            xTaskNotifyFromISR (taskHandleLED, 0x32, eSetValueWithOverwrite, NULL);  // LED: Yellow 1Hz
             if (USBFS_DevSleepStatus == 0x03) {
                 /* Handling usb sleep here */
             }
@@ -690,4 +691,6 @@ void USBFS_IRQHandler (void) {
         /* other interrupts */
         USBFSD->INT_FG = intflag;
     }
+    portYIELD_FROM_ISR (taskWoken);
+    FREE_INT_SP();
 }

@@ -12,9 +12,9 @@
 #include "FreeRTOS.h"
 #include "task.h"
 #include "ch32x035_usbfs_device.h"
+#include "usbqueue.h"
 
 extern TaskHandle_t taskHandleLED;
-extern uint8_t USBQueue_DoProcess();
 
 TaskHandle_t taskHandleDAP __attribute__ ((aligned (4)));
 
@@ -30,7 +30,15 @@ void task_DAP (void *pvParameters) {
                 xTaskNotify (taskHandleLED, 0x31, eSetValueWithOverwrite);  // LED: Yellow Still
             }
         } else {
-            USBQueue_DoProcess();
+            // Check if USB offline
+            if (waitFlag & 0x00030000UL) {
+                // Reset Queue.
+                USBQueue_StatusReset();
+            }
+            // Check if command in queue
+            if (waitFlag & 0x0000ffffUL) {
+                USBQueue_DoProcess();
+            }
         }
     }
     vTaskDelete (NULL);

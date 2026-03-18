@@ -79,7 +79,7 @@ static void CDCSerial_SetEPDNAck (FunctionalState state) {
 }
 #endif
 
-void CDCSerial_EpOUT_Handler (uint8_t len) {
+void CDCSerial_EpOUT_Handler (uint8_t len, BaseType_t *taskWoken) {
 #if CDCSER_DOWN_ENABLE
     // Set ACK state
     if (xStreamBufferSpacesAvailable (sbDown) < (CDCSER_EPDOWN_LEN) + len)
@@ -88,15 +88,15 @@ void CDCSerial_EpOUT_Handler (uint8_t len) {
     CDCSerial_DownPtrUsb = CDCSerial_DownPtrUsb ? 0 : 1;
     CDCSerial_SetEPDNAddr (CDCQueueDown[CDCSerial_DownPtrUsb]);
     // Push buffer
-    xStreamBufferSendFromISR (sbDown, CDCQueueDown[!CDCSerial_DownPtrUsb], len, NULL);
+    xStreamBufferSendFromISR (sbDown, CDCQueueDown[!CDCSerial_DownPtrUsb], len, taskWoken);
     // Send notification
-    xTaskNotifyFromISR (taskHandleSER, 0x01, eSetBits, NULL);
+    xTaskNotifyFromISR (taskHandleSER, 0x01, eSetBits, taskWoken);
 #endif
 }
 
-void CDCSerial_EpIN_Handler() {
+void CDCSerial_EpIN_Handler (BaseType_t *taskWoken) {
 #if CDCSER_UP_ENABLE
-    uint16_t usbUpLen = xStreamBufferReceiveFromISR (sbUp, CDCQueueUp, CDCSER_EPUP_LEN, NULL);
+    uint16_t usbUpLen = xStreamBufferReceiveFromISR (sbUp, CDCQueueUp, CDCSER_EPUP_LEN, taskWoken);
     if (usbUpLen) {                                    // left data in queue
         CDCSerial_EPUpload (CDCQueueUp, usbUpLen);
     } else {                                           // empty queue
@@ -138,7 +138,7 @@ void CDCSerial_QueueReset() {
     DMA1_Channel7->MADDR = (uint32_t)&CDC_DMATxBuf[0];
     if (semaDmaTx == NULL)
         semaDmaTx = xSemaphoreCreateBinary();
-    xSemaphoreGiveFromISR (semaDmaTx, NULL);
+    xSemaphoreGive (semaDmaTx);
 #endif
     //  If other reset operation required, process below.
 }
@@ -146,6 +146,7 @@ void CDCSerial_QueueReset() {
 void USART2_IRQHandler (void) __attribute__ ((interrupt()));  // __attribute__((section(".highcode")));
 
 void USART2_IRQHandler (void) {
+    BaseType_t taskWoken = pdFALSE;
     if (USART_GetITStatus (USART2, USART_IT_IDLE) != RESET) {  // Idle
 #if CDCSER_UP_ENABLE
         if (DMA1_Channel6->CNTR != 0 && DMA1_Channel6->CNTR != (CDCSER_DMARX_LEN >> 1)) {
@@ -153,19 +154,22 @@ void USART2_IRQHandler (void) {
             DMA1_Channel6->CFGR &= (uint16_t)(~DMA_CFGR1_EN);
             DMA1->INTFCR = DMA1_IT_HT6 | DMA1_IT_TC6;
             uint16_t rxCnt = (CDCSER_DMARX_LEN - DMA1_Channel6->CNTR);
-            // Push data
-            if (rxCnt > (CDCSER_DMARX_LEN >> 1)) {  // Buffer 1
-                xStreamBufferSendFromISR (sbUp, &CDC_DMARxBuf[CDCSER_DMARX_LEN >> 1], rxCnt - (CDCSER_DMARX_LEN >> 1), NULL);
-            } else {                                // Buffer 0
-                xStreamBufferSendFromISR (sbUp, &CDC_DMARxBuf[0], rxCnt, NULL);
-            }
-            // Reset buffer
-            DMA1_Channel6->CNTR = CDCSER_DMARX_LEN;
-            DMA1_Channel6->MADDR = (uint32_t)(&CDC_DMARxBuf[0]);
-            DMA1_Channel6->CFGR |= DMA_CFGR1_EN;
-            // Notify main thread
-            if (CDCSerial_UpIdleUsb) {  // if USB Idle
-                xTaskNotifyFromISR (taskHandleSER, 0x02U, eSetBits, NULL);
+            // Check if USB offline
+            if ((USBFS_DevEnumStatus != 0) && ((USBFS_DevSleepStatus & 0x02) == 0)) {
+                // Push data
+                if (rxCnt > (CDCSER_DMARX_LEN >> 1)) {  // Buffer 1
+                    xStreamBufferSendFromISR (sbUp, &CDC_DMARxBuf[CDCSER_DMARX_LEN >> 1], rxCnt - (CDCSER_DMARX_LEN >> 1), &taskWoken);
+                } else {                                // Buffer 0
+                    xStreamBufferSendFromISR (sbUp, &CDC_DMARxBuf[0], rxCnt, &taskWoken);
+                }
+                // Reset buffer
+                DMA1_Channel6->CNTR = CDCSER_DMARX_LEN;
+                DMA1_Channel6->MADDR = (uint32_t)(&CDC_DMARxBuf[0]);
+                DMA1_Channel6->CFGR |= DMA_CFGR1_EN;
+                // Notify main thread
+                if (CDCSerial_UpIdleUsb) {  // if USB Idle
+                    xTaskNotifyFromISR (taskHandleSER, 0x02U, eSetBits, &taskWoken);
+                }
             }
         }
 #endif
@@ -192,58 +196,72 @@ void USART2_IRQHandler (void) {
         // Clear flag
         (void)USART_ReceiveData (USART2);
     }
+    portYIELD_FROM_ISR (taskWoken);
 }
 
 // DMA RX2
 void DMA1_Channel6_IRQHandler (void) __attribute__ ((interrupt()));  // __attribute__((section(".highcode")));
 
 void DMA1_Channel6_IRQHandler (void) {
+    BaseType_t taskWoken = pdFALSE;
     if (DMA_GetITStatus (DMA1_IT_TC6) != RESET) {  // TC, Using buffer 1.
         DMA1->INTFCR = DMA1_IT_TC6;
 #if CDCSER_UP_ENABLE
-        // Push data
-        xStreamBufferSendFromISR (sbUp, &CDC_DMARxBuf[CDCSER_DMARX_LEN >> 1], (CDCSER_DMARX_LEN >> 1), NULL);
-        // Notify main thread
-        if (CDCSerial_UpIdleUsb)  // if USB Idle
-        {
-            xTaskNotifyFromISR (taskHandleSER, 0x02U, eSetBits, NULL);
+        // Check if USB offline
+        if ((USBFS_DevEnumStatus != 0) && ((USBFS_DevSleepStatus & 0x02) == 0)) {
+            // Push data
+            xStreamBufferSendFromISR (sbUp, &CDC_DMARxBuf[CDCSER_DMARX_LEN >> 1], (CDCSER_DMARX_LEN >> 1), &taskWoken);
+            // Notify main thread
+            if (CDCSerial_UpIdleUsb)  // if USB Idle
+            {
+                xTaskNotifyFromISR (taskHandleSER, 0x02U, eSetBits, &taskWoken);
+            }
         }
 #endif
     }
     if (DMA_GetITStatus (DMA1_IT_HT6) != RESET) {  // HT, Using buffer 0.
         DMA1->INTFCR = DMA1_IT_HT6;
 #if CDCSER_UP_ENABLE
-        // Push data
-        xStreamBufferSendFromISR (sbUp, &CDC_DMARxBuf[0], (CDCSER_DMARX_LEN >> 1), NULL);
-        // Notify main thread
-        if (CDCSerial_UpIdleUsb)  // if USB Idle
-        {
-            xTaskNotifyFromISR (taskHandleSER, 0x02U, eSetBits, NULL);
+        // Check if USB offline
+        if ((USBFS_DevEnumStatus != 0) && ((USBFS_DevSleepStatus & 0x02) == 0)) {
+            // Push data
+            xStreamBufferSendFromISR (sbUp, &CDC_DMARxBuf[0], (CDCSER_DMARX_LEN >> 1), &taskWoken);
+            // Notify main thread
+            if (CDCSerial_UpIdleUsb)  // if USB Idle
+            {
+                xTaskNotifyFromISR (taskHandleSER, 0x02U, eSetBits, &taskWoken);
+            }
         }
 #endif
     }
+    portYIELD_FROM_ISR (taskWoken);
 }
 
 // DMA_TX2
 void DMA1_Channel7_IRQHandler (void) __attribute__ ((interrupt()));  // __attribute__((section(".highcode")));
 
 void DMA1_Channel7_IRQHandler (void) {
+    BaseType_t taskWoken = pdFALSE;
     if (DMA_GetITStatus (DMA1_IT_TC7) != RESET) {  // TC
         DMA1_Channel7->CFGR &= (uint16_t)(~DMA_CFGR1_EN);
         DMA1->INTFCR = DMA1_IT_TC7;
 #if CDCSER_DOWN_ENABLE
-        uint16_t dmaTxLen = xStreamBufferReceiveFromISR (sbDown, CDC_DMATxBuf, CDCSER_DMATX_LEN, NULL);
-        if (dmaTxLen) {
-            DMA1_Channel7->MADDR = (uint32_t)&CDC_DMATxBuf[0];
-            DMA1_Channel7->CNTR = dmaTxLen;
-            DMA_Cmd (DMA1_Channel7, ENABLE);
-        } else {
-            xSemaphoreGiveFromISR (semaDmaTx, NULL);
+        // Check if USB offline
+        if ((USBFS_DevEnumStatus != 0) && ((USBFS_DevSleepStatus & 0x02) == 0)) {
+            uint16_t dmaTxLen = xStreamBufferReceiveFromISR (sbDown, CDC_DMATxBuf, CDCSER_DMATX_LEN, &taskWoken);
+            if (dmaTxLen) {
+                DMA1_Channel7->MADDR = (uint32_t)&CDC_DMATxBuf[0];
+                DMA1_Channel7->CNTR = dmaTxLen;
+                DMA_Cmd (DMA1_Channel7, ENABLE);
+            } else {
+                xSemaphoreGiveFromISR (semaDmaTx, &taskWoken);
+            }
+            if (xStreamBufferSpacesAvailable (sbDown) >= (CDCSER_EPDOWN_LEN << 1U))
+                CDCSerial_SetEPDNAck (ENABLE);
         }
-        if (xStreamBufferSpacesAvailable (sbDown) >= (CDCSER_EPDOWN_LEN << 1U))
-            CDCSerial_SetEPDNAck (ENABLE);
 #endif
     }
+    portYIELD_FROM_ISR (taskWoken);
 }
 
 void CDCSerial_InitUART (uint32_t baudrate, uint16_t databit, uint16_t paritybit,
@@ -329,7 +347,7 @@ void CDCSerial_InitUART (uint32_t baudrate, uint16_t databit, uint16_t paritybit
 #endif
 }
 
-int __attribute__((noinline)) CDCSerial_Init (uint8_t linecoding[8]) {
+int __attribute__ ((noinline)) CDCSerial_Init (uint8_t linecoding[8]) {
     uint32_t baudrate = linecoding[0];
     baudrate += ((uint32_t)linecoding[1] << 8);
     baudrate += ((uint32_t)linecoding[2] << 16);
@@ -369,6 +387,11 @@ void task_SER (void *pvParameters) {
     uint32_t notifyFlag;
     while (1) {
         xTaskNotifyWait (0x0, 0xffffffffUL, &notifyFlag, portMAX_DELAY);
+        // Check if USB offline
+        if (notifyFlag & 0x00030000UL) {
+            // Reset Queue.
+            CDCSerial_QueueReset();
+        }
         if (notifyFlag & 0x00000001UL) {                          // Downstream packet pending
 #if CDCSER_DOWN_ENABLE
             if (xSemaphoreTake (semaDmaTx, pdMS_TO_TICKS (5))) {  // DMA not running
