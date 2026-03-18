@@ -289,8 +289,6 @@ extern void JTAG_WriteAbort(uint32_t data);
 extern uint8_t JTAG_Transfer(uint32_t request, uint32_t *data);
 extern uint8_t SWD_Transfer(uint32_t request, uint32_t *data);
 
-extern void Delayms(uint32_t delay);
-
 extern uint32_t SWO_Transport(const uint8_t *request, uint8_t *response);
 extern uint32_t SWO_Mode(const uint8_t *request, uint8_t *response);
 extern uint32_t SWO_Baudrate(const uint8_t *request, uint8_t *response);
