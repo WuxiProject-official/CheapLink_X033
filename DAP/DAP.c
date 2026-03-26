@@ -49,6 +49,12 @@
 volatile DAP_Data_t DAP_Data;           // DAP Data
 volatile uint8_t DAP_TransferAbort;  // Transfer Abort Flag
 
+#if USE_PIOC_ACC
+volatile uint8_t DAP_PIOC_ClockDelay[2];  // delay for SW-DP clock generation (PIOC)
+static const uint32_t DAP_PIOC_DelayL1_Cycles=770U;
+static const uint32_t DAP_PIOC_DelayL2_Cycles=3U;
+#endif
+
 static const char DAP_FW_Ver[] = DAP_FW_VER;
 
 // Common clock delay calculation routine
@@ -61,12 +67,77 @@ static void Set_Clock_Delay(uint32_t clock)
 	{
 		DAP_Data.fast_clock = 1U;
 		DAP_Data.clock_delay = 1U;
+#if USE_PIOC_ACC
+		DAP_PIOC_ClockDelay[0] = 1U;
+		DAP_PIOC_ClockDelay[1] = 0U;
+#endif
 	}
 	else
 	{
 		DAP_Data.fast_clock = 0U;
 
 		delay = ((CPU_CLOCK / 2U) + (clock - 1U)) / clock;
+#if USE_PIOC_ACC
+		/*
+		 * PIOC delay cycle calculation
+		 * delay_cycles = 770 * D1 + 3 * D0 + 10,
+		 * where D0 in [1,255], D1 in [0,255].
+		 */
+		{
+			uint32_t pioc_delay;
+			uint32_t d0;
+			uint32_t d1;
+			uint32_t rem;
+
+			/* 1 cycle is consumed by PIOC IO operation itself */
+			if (delay > 1U)
+			{
+				pioc_delay = delay - 1U;
+			}
+			else
+			{
+				pioc_delay = 1U;
+			}
+
+			/* DELAY_L2 has fixed 10-cycle overhead in slow path */
+			if (pioc_delay > 10U)
+			{
+				pioc_delay -= 10U;
+			}
+			else
+			{
+				pioc_delay = 0U;
+			}
+
+			d1 = pioc_delay / DAP_PIOC_DelayL1_Cycles;
+			if (d1 > 255U)
+			{
+				d1 = 255U;
+			}
+
+			rem = pioc_delay - (d1 * DAP_PIOC_DelayL1_Cycles);
+			d0 = (rem + (DAP_PIOC_DelayL2_Cycles - 1U)) / DAP_PIOC_DelayL2_Cycles;
+			if (d0 < 1U)
+			{
+				d0 = 1U;
+			}else if (d0 > 255U)
+			{
+				if (d1 < 255U)
+				{
+					d1++;
+					d0 = 1U;
+				}
+				else
+				{
+					d0 = 255U;
+				}
+			}
+
+			DAP_PIOC_ClockDelay[0] = (uint8_t) d0;
+			DAP_PIOC_ClockDelay[1] = (uint8_t) d1;
+		}
+#endif
+		/* GPIO delay cycle calculation */
 		if (delay > IO_PORT_WRITE_CYCLES)
 		{
 			delay -= IO_PORT_WRITE_CYCLES;
@@ -427,7 +498,7 @@ static uint32_t DAP_SWJ_Clock(const uint8_t *request, uint8_t *response)
 {
 #if ((DAP_SWD != 0) || (DAP_JTAG != 0))
 	uint32_t clock;
-	uint32_t delay;
+	//uint32_t delay;
 
 	clock = (uint32_t) (*(request + 0) << 0) | (uint32_t) (*(request + 1) << 8)
 			| (uint32_t) (*(request + 2) << 16)

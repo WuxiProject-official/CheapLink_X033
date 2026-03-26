@@ -5,3 +5,5 @@ Documentation/Doxygen/*.csv
 /obj
 *.bak.*
 /.mrs
+PIOC/WASM53B.EXE
+PIOC/BIN_HEX.EXE

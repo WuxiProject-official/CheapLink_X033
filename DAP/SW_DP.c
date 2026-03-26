@@ -96,7 +96,6 @@ void SWJ_Sequence(uint32_t count, const uint8_t *data)
 //   swdo:   pointer to SWDIO generated data
 //   swdi:   pointer to SWDIO captured data
 //   return: none
-__attribute__((section(".highcode")))
 void SWD_Sequence(uint32_t info, const uint8_t *swdo, uint8_t *swdi)
 {
 	uint32_t val;
@@ -139,12 +138,12 @@ void SWD_Sequence(uint32_t info, const uint8_t *swdo, uint8_t *swdi)
 }
 #endif
 
+#if (!USE_PIOC_ACC)
 #if (DAP_SWD != 0)
 // SWD Transfer I/O Fast
 //   request: A[3:2] RnW APnDP
 //   data:    DATA[31:0]
 //   return:  ACK[2:0]
-__attribute__((section(".highcode")))
  static uint8_t SWD_TransferFast(
 		uint32_t request, uint32_t *data)
 {
@@ -386,7 +385,6 @@ __attribute__((section(".highcode")))
 //   request: A[3:2] RnW APnDP
 //   data:    DATA[31:0]
 //   return:  ACK[2:0]
-__attribute__((section(".highcode")))
  static uint8_t SWD_TransferSlow(
 		uint32_t request, uint32_t *data)
 {
@@ -628,7 +626,6 @@ __attribute__((section(".highcode")))
 //   request: A[3:2] RnW APnDP
 //   data:    DATA[31:0]
 //   return:  ACK[2:0]
-__attribute__((section(".highcode")))
  uint8_t SWD_Transfer(uint32_t request,
 		uint32_t *data)
 {
@@ -641,5 +638,6 @@ __attribute__((section(".highcode")))
 		return SWD_TransferSlow(request, data);
 	}
 }
+#endif
 
 #endif  /* (DAP_SWD != 0) */

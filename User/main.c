@@ -1,6 +1,6 @@
 /*
  *  Main function file for firmware of CheapLink_X033
- *  Copyright (C) 2022-2025  WuxiProject
+ *  Copyright (C) 2022-2026  WuxiProject
  *
  *  SPDX-License-Identifier: MPL-2.0
  *
@@ -42,7 +42,7 @@ void vApplicationStackOverflowHook (TaskHandle_t xTask, char *pcTaskName) {
     while (1);
 }
 
-static void ConvertUint32ToUnicode16Str(uint32_t num, char *str) {
+static void ConvertUint32ToUnicode16Str(uint32_t num, unsigned char *str) {
     // Note: this does not append null terminator
     for (uint32_t i = 0; i < 8; i++) {
         uint8_t digit = (num >> ((7 - i) << 2)) & 0x0F;

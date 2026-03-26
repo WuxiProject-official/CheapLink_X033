@@ -1,6 +1,6 @@
 /*
  *  USB Queue Middleware
- *  Copyright (C) 2022-2025  WuxiProject
+ *  Copyright (C) 2022-2026  WuxiProject
  *
  *  SPDX-License-Identifier: MPL-2.0
  *
@@ -30,11 +30,11 @@
 extern volatile uint8_t USBFS_Endp_Busy[];
 
 // Prepare data for IN endpoint upload.
-uint8_t USBQueue_EPUpload (uint8_t *buf, uint16_t len) {
+uint8_t USBQueue_EPUpload (volatile uint8_t *buf, uint16_t len) {
     while (USBFS_Endp_Busy[UQ_EP_UP]) {
         ;
     }
-    return USBFS_Endp_DataUp (UQ_EP_UP, buf, len, DEF_UEP_DMA_LOAD);
+    return USBFS_Endp_DataUp (UQ_EP_UP, (uint8_t *)buf, len, DEF_UEP_DMA_LOAD);
 }
 
 // Prepare buffer for OUT transaction.
@@ -57,6 +57,7 @@ void USBQueue_SetEPDNAck (FunctionalState state) {
 
 // ##PORT_IMPLEMENTION_END##
 
+#include "DAP_config.h"
 #include "DAP.h"
 
 void memset_v (volatile void *p, int val, size_t len) {
@@ -119,7 +120,7 @@ void USBQueue_StatusReset() {
 #include "task.h"
 extern TaskHandle_t taskHandleDAP;
 
-void USBQueue_EpOUT_Handler (uint8_t len,BaseType_t *taskWoken) {
+void USBQueue_EpOUT_Handler (uint8_t len, BaseType_t *taskWoken) {
     if (UQ_InQueue[UQ_InPtrIn][0] == ID_DAP_TransferAbort) {
         DAP_TransferAbort = 1U;
     } else {
@@ -179,7 +180,7 @@ uint8_t USBQueue_DoProcess() {
             }
         }
         // Start to process
-        UQ_OutLen[UQ_OutPtrIn] = (uint8_t)DAP_ExecuteCommand (UQ_InQueue[UQ_InPtrOut], UQ_OutQueue[UQ_OutPtrIn]);
+        UQ_OutLen[UQ_OutPtrIn] = (uint8_t)DAP_ExecuteCommand ((uint8_t *)UQ_InQueue[UQ_InPtrOut], (uint8_t *)UQ_OutQueue[UQ_OutPtrIn]);
         UQ_InPtrOut++;
         if (UQ_InPtrOut == UQ_QUEUELEN)  // loopback
         {

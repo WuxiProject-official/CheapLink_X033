@@ -1,6 +1,6 @@
 /*
  *  Task-LED source file for firmware of CheapLink_X033
- *  Copyright (C) 2022-2025  WuxiProject
+ *  Copyright (C) 2022-2026  WuxiProject
  *
  *  SPDX-License-Identifier: MPL-2.0
  *
@@ -16,7 +16,7 @@ TaskHandle_t taskHandleLED __attribute__ ((aligned (4)));
 
 void task_LED (void *pvParameters) {
     volatile uint8_t i = 0, LED_State = 0;
-    volatile uint32_t notify = 0xffffffff, flashDelayTicks = 0;
+    uint32_t notify = 0xffffffff, flashDelayTicks = 0;
     while (1) {
         switch (LED_State) {
         case 0x11:

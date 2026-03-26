@@ -28,13 +28,6 @@
 #ifndef __DAP_H__
 #define __DAP_H__
 
-// MRS workaround
-#define __INLINE __inline
-#define __STATIC_INLINE static __inline
-#define __STATIC_FORCEINLINE __attribute__((always_inline)) static __inline
-#define __WEAK __attribute__((weak))
-#define __ASM __asm
-
 // DAP Firmware Version
 #ifdef  DAP_FW_V1
 #define DAP_FW_VER                      "1.3.0"
@@ -330,7 +323,7 @@ extern void DAP_Setup(void);
 
 // Configurable delay for clock generation
 #ifndef DELAY_SLOW_CYCLES
-#define DELAY_SLOW_CYCLES       4U      // Number of cycles for one iteration
+#define DELAY_SLOW_CYCLES       6U      // Number of cycles for one iteration
 #endif
 __STATIC_FORCEINLINE void PIN_DELAY_SLOW(uint32_t delay)
 {
