@@ -50,6 +50,7 @@ volatile DAP_Data_t DAP_Data;           // DAP Data
 volatile uint8_t DAP_TransferAbort;  // Transfer Abort Flag
 
 #if USE_PIOC_ACC
+#include "dap_pioc.h"
 volatile uint8_t DAP_PIOC_ClockDelay[2];  // delay for SW-DP clock generation (PIOC)
 static const uint32_t DAP_PIOC_DelayL1_Cycles=770U;
 static const uint32_t DAP_PIOC_DelayL2_Cycles=3U;
@@ -135,6 +136,8 @@ static void Set_Clock_Delay(uint32_t clock)
 
 			DAP_PIOC_ClockDelay[0] = (uint8_t) d0;
 			DAP_PIOC_ClockDelay[1] = (uint8_t) d1;
+			PIOC_DAP_WriteSFR(6, DAP_PIOC_ClockDelay[0]);
+			PIOC_DAP_WriteSFR(7, DAP_PIOC_ClockDelay[1]);
 		}
 #endif
 		/* GPIO delay cycle calculation */
@@ -561,6 +564,11 @@ static uint32_t DAP_SWD_Configure(const uint8_t *request, uint8_t *response)
 	DAP_Data.swd_conf.turnaround = (value & 0x03U) + 1U;
 	DAP_Data.swd_conf.data_phase = (value & 0x04U) ? 1U : 0U;
 
+#if USE_PIOC_ACC
+	PIOC_DAP_WriteSFR(0, DAP_Data.swd_conf.turnaround);
+	PIOC_DAP_WriteSFR(2, DAP_Data.swd_conf.data_phase);
+#endif
+
 	*response = DAP_OK;
 #else
 	*response = DAP_ERROR;
@@ -776,6 +784,10 @@ static uint32_t DAP_TransferConfigure(const uint8_t *request, uint8_t *response)
 			| (uint16_t) (*(request + 2) << 8);
 	DAP_Data.transfer.match_retry = (uint16_t) *(request + 3)
 			| (uint16_t) (*(request + 4) << 8);
+
+#if USE_PIOC_ACC
+	PIOC_DAP_WriteSFR(1, DAP_Data.transfer.idle_cycles);
+#endif
 
 	*response = DAP_OK;
 	return ((5U << 16) | 1U);
@@ -2073,12 +2085,19 @@ void DAP_Setup(void)
 	// Default settings
 	DAP_Data.debug_port = 0U;
 	DAP_Data.transfer.idle_cycles = 0U;
+#if USE_PIOC_ACC
+	PIOC_DAP_WriteSFR(1, DAP_Data.transfer.idle_cycles);
+#endif
 	DAP_Data.transfer.retry_count = 100U;
 	DAP_Data.transfer.match_retry = 0U;
 	DAP_Data.transfer.match_mask = 0x00000000U;
 #if (DAP_SWD != 0)
 	DAP_Data.swd_conf.turnaround = 1U;
 	DAP_Data.swd_conf.data_phase = 0U;
+#if USE_PIOC_ACC
+	PIOC_DAP_WriteSFR(0, DAP_Data.swd_conf.turnaround);
+	PIOC_DAP_WriteSFR(2, DAP_Data.swd_conf.data_phase);
+#endif
 #endif
 #if (DAP_JTAG != 0)
 	DAP_Data.jtag_dev.count = 0U;

@@ -20,6 +20,11 @@ __attribute__ ((aligned (16))) static const uint8_t PIOC_CODE[] =
 #include "PIOC_SW-DP_inc.h"
 
 void PIOC_DAP_Init (void) {
+    GPIO_InitTypeDef GPIO_InitStructure =
+        {0};
+    GPIO_InitStructure.GPIO_Pin = GPIO_Pin_18 | GPIO_Pin_19;
+    GPIO_InitStructure.GPIO_Mode = GPIO_Mode_IPU;
+    GPIO_Init (GPIOC, &GPIO_InitStructure);
     memcpy ((uint8_t *)(PIOC_SRAM_BASE), PIOC_CODE, sizeof (PIOC_CODE));
     R8_SYS_CFG |= RB_MST_RESET;                  // reset PIOC
     R8_SYS_CFG = RB_MST_IO_EN1 | RB_MST_IO_EN0;  // enable IO0&IO1
@@ -38,7 +43,7 @@ void PIOC_DAP_Halt (void) {
     R8_SYS_CFG &= (~RB_MST_CLK_GATE);
 }
 
-void PIOC_DAP_Cmd (PIOC_DAPCmdType_t cmd, uint8_t cmd_arg) {
+inline void PIOC_DAP_Cmd (PIOC_DAPCmdType_t cmd, uint8_t cmd_arg) {
     // SFR_DATA_REG3 is used for command type
     R8_DATA_REG3 = (uint8_t)cmd;
     // SFR_DATA_REG4 is used for command argument
@@ -47,6 +52,10 @@ void PIOC_DAP_Cmd (PIOC_DAPCmdType_t cmd, uint8_t cmd_arg) {
 
 uint8_t PIOC_DAP_ReadCmdResult (void) {
     return R8_DATA_REG5;  // SFR_DATA_REG5 is used for command result
+}
+
+inline void PIOC_DAP_WriteSFR (uint16_t index, uint8_t value) {
+    (*((volatile unsigned char *)(PIOC_SFR_BASE + 0x20 + index))) = value;
 }
 
 void PIOC_DAP_PutData (uint8_t *data, uint16_t len) {
@@ -79,35 +88,33 @@ int PIOC_DAP_GetItFlag (void) {
 //   request: A[3:2] RnW APnDP
 //   data:    DATA[31:0]
 //   return:  ACK[2:0]
-uint8_t SWD_Transfer (uint32_t request,
-                      uint32_t *data) {
-    // uint32_t gpioOutState = (GPIOA->OUTDR & (GPIO_Pin_5 | GPIO_Pin_7) >> 5U);  // save current GPIO state
-    //  turn GPIO off
-    GPIO_InitTypeDef GPIO_InitStructure =
-        {0};
-    GPIO_InitStructure.GPIO_Pin = GPIO_Pin_18 | GPIO_Pin_19;
-    GPIO_InitStructure.GPIO_Mode = GPIO_Mode_AF_PP;
-    GPIO_InitStructure.GPIO_Speed = GPIO_Speed_50MHz;
-    GPIO_Init (GPIOC, &GPIO_InitStructure);
-    GPIO_InitStructure.GPIO_Pin = GPIO_Pin_5 | GPIO_Pin_7;
-    GPIO_InitStructure.GPIO_Mode = GPIO_Mode_AIN;
-    GPIO_Init (GPIOA, &GPIO_InitStructure);
-    PIOC_DAP_LoadCfg();
+uint8_t SWD_Transfer (uint32_t request, uint32_t *data) {
+    uint32_t tmp;
+    // Enable PIOC GPIOs
+    tmp = GPIOC->CFGXR;
+    tmp &= ~(0x0000FF00UL);  // AF_PP
+    tmp |= 0x00009900UL;
+    GPIOC->CFGXR = tmp;
+    // Disable MCU GPIOs
+    GPIOA->BSHR = (GPIO_Pin_5 | GPIO_Pin_7);  // IPU
+    tmp = GPIOA->CFGLR;
+    tmp &= ~(0xF0F00000UL);                   // IPU
+    tmp |= 0x80800000UL;
+    GPIOA->CFGLR = tmp;
+    // PIOC_DAP_LoadCfg();
     if (!(request & DAP_TRANSFER_RnW)) {
         // write transfer
         R32_DATA_REG16_19 = *data;
     }
     PIOC_DAP_Cmd (PIOC_DAP_SWDTRANSFER, (uint8_t)request);
-    (void)R8_CTRL_RD;          // Clear flag
-    uint8_t ctrlWrVal = 0x00;  // gpioOutState & 0x0f;  // only bit0-3
+    (void)R8_CTRL_RD;  // Clear flag
+    // Set SFR_CTRL_WR to start PIOC
     if (DAP_Data.fast_clock != 0) {
         // for fast clock, set SFR_CTRL_WR[7]=1
-        ctrlWrVal |= 0x80;
+        R8_CTRL_WR |= 0x80;
     } else {
-        ctrlWrVal &= 0x7F;
+        R8_CTRL_WR &= 0x7F;
     }
-    // Set SFR_CTRL_WR to start PIOC
-    R8_CTRL_WR = ctrlWrVal;
     // at this time PIOC is running, wait for transfer complete
     while ((R8_SYS_CFG & RB_DATA_SW_MR) == 0);
     uint8_t ack = R8_CTRL_RD;  // get ACK from SFR_CTRL_RD
@@ -115,14 +122,17 @@ uint8_t SWD_Transfer (uint32_t request,
         // read transfer
         *data = R32_DATA_REG16_19;
     }
-    // turn GPIO on
-    GPIO_InitStructure.GPIO_Pin = GPIO_Pin_5 | GPIO_Pin_7;
-    GPIO_InitStructure.GPIO_Mode = GPIO_Mode_Out_PP;
-    GPIO_InitStructure.GPIO_Speed = GPIO_Speed_50MHz;
-    GPIO_Init (GPIOA, &GPIO_InitStructure);
-    GPIO_InitStructure.GPIO_Pin = GPIO_Pin_18 | GPIO_Pin_19;
-    GPIO_InitStructure.GPIO_Mode = GPIO_Mode_AIN;
-    GPIO_Init (GPIOC, &GPIO_InitStructure);
+    // Enable MCU GPIOs
+    tmp = GPIOA->CFGLR;
+    tmp &= ~(0xF0F00000UL);  // OPP
+    tmp |= 0x10100000UL;
+    GPIOA->CFGLR = tmp;
+    // Disable PIOC GPIOs
+    GPIOC->BSXR = (GPIO_Pin_18 | GPIO_Pin_19) >> 16;  // IPU
+    tmp = GPIOC->CFGXR;
+    tmp &= ~(0x0000FF00UL);                           // IPU
+    tmp |= 0x00008800UL;
+    GPIOC->CFGXR = tmp;
     return ack;
 }
 

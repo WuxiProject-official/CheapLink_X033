@@ -42,7 +42,7 @@ volatile uint8_t USBFS_Endp_Busy[DEF_UEP_NUM];
 
 /******************************************************************************/
 /* Interrupt Service Routine Declaration*/
-void USBFS_IRQHandler (void) __attribute__((interrupt())) __attribute__ ((section (".highcode")));
+void USBFS_IRQHandler (void)  __attribute__((interrupt()));// __attribute__ ((section (".highcode")));
 
 /*********************************************************************
  * @fn      USBFS_RCC_Init

@@ -24,6 +24,8 @@ extern void PIOC_DAP_Run (void);
 extern void PIOC_DAP_Halt(void);
 extern void PIOC_DAP_Cmd(PIOC_DAPCmdType_t cmd, uint8_t arg);
 extern uint8_t PIOC_DAP_ReadCmdResult(void);
+extern void PIOC_DAP_WriteSFR(uint16_t index, uint8_t value);
+extern void PIOC_DAP_PutData (uint8_t *data, uint16_t len);
 extern void PIOC_DAP_LoadCfg(void);
 extern int PIOC_DAP_GetItFlag(void);
 

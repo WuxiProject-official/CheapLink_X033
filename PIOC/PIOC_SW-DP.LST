@@ -3,7 +3,7 @@ Copyright (C) wch.cn 1998-2021, B211121
 Website:   http://wch.cn
 
 List file: PIOC_SW-DP.LST
-Date: 2026.03.29  Time: 18:03:15
+Date: 2026.03.29  Time: 22:28:43
 
 Pass1 -------------------------------------------------------------------------
 LINE ,  PC ,  CODE/DATA: SOURCE
@@ -631,8 +631,8 @@ L=0466, ......, D=0000 : ;
 L=0467, ......, D=0000 : ;
 L=0468, P=0172, C=0000 : PIOC_INIT:			NOP
 L=0469, P=0173, C=0000 : 					NOP
-L=0470, P=0174, C=2501 : 					MOVA2F	0B00000001	; IO0=1, IO1=0
-L=0471, P=0175, C=230C : 					MOVA1F	0B00001100	; IO0(IPU), IO1(IPU)
+L=0470, P=0174, C=2503 : 					MOVA2F	0B00000011	; IO0=1, IO1=1
+L=0471, P=0175, C=230F : 					MOVA1F	0B00001111	; IO0(OPU), IO1(OPU)
 L=0472, P=0176, C=0014 : PIOC_INIT_1:		WAITB	WB_DATA_MW_SR_1
 L=0473, ......, D=0000 : ; Load initial IO state
 L=0474, ......, D=0000 : ;					MOV		PIOC_CMD_CODE,A
@@ -649,12 +649,12 @@ L=0484, P=017D, C=6176 : 					JMP		PIOC_INIT_1
 L=0485, ......, D=0000 : ;
 L=0486, P=017E, C=0225 : PIOC_WAIT_HOST:		MOV		DAP_CMD_RESP,A
 L=0487, P=017F, C=101D : 					MOVA	PIOC_CMD_RESP
-L=0488, P=0180, C=230C : 					MOVA1F	0B00001100	; IO0(IPU), IO1(IPU)
-L=0489, P=0181, C=0010 : 					WAITB	WB_DATA_SW_MR_0
-L=0490, P=0182, C=471C : 					BC		SFR_SYS_CFG,SB_INT_REQ
-L=0491, P=0183, C=6176 : 					JMP		PIOC_INIT_1
+L=0488, ......, D=0000 : ;					MOVA1F	0B00001100	; IO0(IPU), IO1(IPU)
+L=0489, P=0180, C=0010 : 					WAITB	WB_DATA_SW_MR_0
+L=0490, P=0181, C=471C : 					BC		SFR_SYS_CFG,SB_INT_REQ
+L=0491, P=0182, C=6176 : 					JMP		PIOC_INIT_1
 L=0492, ......, D=0000 : ;
-L=0493, P=0184, C=6184 : WLP:				JMP		WLP
+L=0493, P=0183, C=6183 : WLP:				JMP		WLP
 L=0494, ......, D=0000 : ;
 L=0495, P=0400, ...... : 					ORG		0X0400
 L=0496, P=0400, C=0000 : 					DW		0X0000
@@ -836,7 +836,7 @@ Label = 159 -------------------------------------------------------------------
 .. WB_PORT_XOR0_0              .. 0006 .. unused
 .. WB_PORT_XOR0_1              .. 0007 .. unused
 .. WB_PORT_XOR1_1              .. 0005 .. unused
-.. WLP                         .. 0184 .. normal
+.. WLP                         .. 0183 .. normal
 
 End = 0410H -------------------------------------------------------------------
 Total_Info: 00, Total_Warning: 00, Total_Error: 00

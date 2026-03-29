@@ -332,6 +332,10 @@ __STATIC_INLINE void PORT_SWD_SETUP (void) {
     GPIO_InitStructure.GPIO_Pin = GPIO_Pin_6;
     GPIO_InitStructure.GPIO_Mode = GPIO_Mode_IPU;
     GPIO_Init (GPIOA, &GPIO_InitStructure);
+    GPIO_InitStructure.GPIO_Pin = GPIO_Pin_18 | GPIO_Pin_19;
+    GPIO_InitStructure.GPIO_Mode = GPIO_Mode_IPU;
+    GPIO_InitStructure.GPIO_Speed = GPIO_Speed_50MHz;
+    GPIO_Init (GPIOC, &GPIO_InitStructure);
 }
 
 /** Disable JTAG/SWD I/O Pins.

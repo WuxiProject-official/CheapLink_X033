@@ -7,3 +7,5 @@ Documentation/Doxygen/*.csv
 /.mrs
 PIOC/WASM53B.EXE
 PIOC/BIN_HEX.EXE
+PIOC/PIOC_SW-DP.BIN
+PIOC/PIOC_SW-DP.LST
