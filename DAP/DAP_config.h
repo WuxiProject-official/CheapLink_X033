@@ -323,8 +323,7 @@ __STATIC_INLINE void PORT_JTAG_SETUP (void) {
 __STATIC_INLINE void PORT_SWD_SETUP (void) {
     GPIO_SetBits (GPIOA, GPIO_Pin_7);
     GPIO_ResetBits (GPIOA, GPIO_Pin_5);
-    GPIO_InitTypeDef GPIO_InitStructure =
-        {0};
+    GPIO_InitTypeDef GPIO_InitStructure = {0};
     GPIO_InitStructure.GPIO_Pin = GPIO_Pin_4 | GPIO_Pin_5 | GPIO_Pin_7;
     GPIO_InitStructure.GPIO_Mode = GPIO_Mode_Out_PP;
     GPIO_InitStructure.GPIO_Speed = GPIO_Speed_50MHz;
@@ -349,8 +348,7 @@ __STATIC_INLINE void PORT_SWD_SETUP (void) {
  * PA4 - nRESET			OUT_PP
  */
 __STATIC_INLINE void PORT_OFF (void) {
-    GPIO_InitTypeDef GPIO_InitStructure =
-        {0};
+    GPIO_InitTypeDef GPIO_InitStructure = {0};
     GPIO_InitStructure.GPIO_Pin = GPIO_Pin_4 | GPIO_Pin_5 | GPIO_Pin_6 | GPIO_Pin_7;
     GPIO_InitStructure.GPIO_Mode = GPIO_Mode_AIN;
     GPIO_Init (GPIOA, &GPIO_InitStructure);
@@ -433,8 +431,7 @@ __STATIC_FORCEINLINE void PIN_SWDIO_OUT (uint32_t bit) {
  called prior \ref PIN_SWDIO_OUT function calls.
  */
 __STATIC_FORCEINLINE void PIN_SWDIO_OUT_ENABLE (void) {
-    //	GPIO_InitTypeDef GPIO_InitStructure =
-    //		{ 0 };
+    //	GPIO_InitTypeDef GPIO_InitStructure = { 0 };
     //		GPIO_InitStructure.GPIO_Pin = GPIO_Pin_7;
     //		GPIO_InitStructure.GPIO_Mode = GPIO_Mode_Out_PP;
     //		GPIO_InitStructure.GPIO_Speed = GPIO_Speed_50MHz;
@@ -446,8 +443,7 @@ __STATIC_FORCEINLINE void PIN_SWDIO_OUT_ENABLE (void) {
  called prior \ref PIN_SWDIO_IN function calls.
  */
 __STATIC_FORCEINLINE void PIN_SWDIO_OUT_DISABLE (void) {
-    //	GPIO_InitTypeDef GPIO_InitStructure =
-    //			{ 0 };
+    //	GPIO_InitTypeDef GPIO_InitStructure = { 0 };
     //			GPIO_InitStructure.GPIO_Pin = GPIO_Pin_7;
     //			GPIO_InitStructure.GPIO_Mode = GPIO_Mode_IPU;
     //			GPIO_Init(GPIOA, &GPIO_InitStructure);
@@ -634,18 +630,7 @@ __STATIC_INLINE uint32_t TIMESTAMP_GET (void) {
  *   BLUE   - PA1
  */
 __STATIC_INLINE void DAP_SETUP (void) {
-    RCC_APB2PeriphClockCmd (RCC_APB2Periph_GPIOA | RCC_APB2Periph_GPIOC, ENABLE);
-    GPIO_InitTypeDef GPIO_InitStructure =
-        {0};
-    // Init LED
-    GPIOA->BSHR = GPIO_Pin_0 | GPIO_Pin_1;
-    GPIOC->BSHR = GPIO_Pin_3;
-    GPIO_InitStructure.GPIO_Pin = GPIO_Pin_3;
-    GPIO_InitStructure.GPIO_Mode = GPIO_Mode_Out_PP;
-    GPIO_InitStructure.GPIO_Speed = GPIO_Speed_50MHz;
-    GPIO_Init (GPIOC, &GPIO_InitStructure);
-    GPIO_InitStructure.GPIO_Pin = GPIO_Pin_0 | GPIO_Pin_1;
-    GPIO_Init (GPIOA, &GPIO_InitStructure);
+    GPIO_InitTypeDef GPIO_InitStructure = {0};
     // Init SWD IO
     GPIO_InitStructure.GPIO_Pin = GPIO_Pin_5 | GPIO_Pin_6 | GPIO_Pin_7;
     GPIO_InitStructure.GPIO_Mode = GPIO_Mode_IN_FLOATING;
@@ -655,8 +640,7 @@ __STATIC_INLINE void DAP_SETUP (void) {
     GPIO_Init (GPIOA, &GPIO_InitStructure);
     // Init SYSCNT TIM3
     {
-        TIM_TimeBaseInitTypeDef TIM_TimeBaseInitStructure =
-            {0};
+        TIM_TimeBaseInitTypeDef TIM_TimeBaseInitStructure = {0};
         RCC_APB1PeriphClockCmd (RCC_APB1Periph_TIM3, ENABLE);
         TIM_DeInit (TIM3);
         TIM_TimeBaseInitStructure.TIM_Period = 65535;
@@ -672,9 +656,7 @@ __STATIC_INLINE void DAP_SETUP (void) {
         TIM_Cmd (TIM3, ENABLE);
     };
 #if USE_PIOC_ACC
-    // Prepare GPIO for PIOC
-    RCC_APB2PeriphClockCmd (RCC_APB2Periph_AFIO, ENABLE);
-    GPIO_PinRemapConfig (GPIO_Remap_SWJ_Disable, ENABLE);
+    PIOC_DAP_Halt();
     PIOC_DAP_Init();
     PIOC_DAP_Run();
 #endif

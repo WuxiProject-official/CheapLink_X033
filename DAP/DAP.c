@@ -2081,7 +2081,6 @@ uint32_t DAP_ExecuteCommand(const uint8_t *request, uint8_t *response)
 // Setup DAP
 void DAP_Setup(void)
 {
-
 	// Default settings
 	DAP_Data.debug_port = 0U;
 	DAP_Data.transfer.idle_cycles = 0U;

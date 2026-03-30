@@ -20,8 +20,7 @@ __attribute__ ((aligned (16))) static const uint8_t PIOC_CODE[] =
 #include "PIOC_SW-DP_inc.h"
 
 void PIOC_DAP_Init (void) {
-    GPIO_InitTypeDef GPIO_InitStructure =
-        {0};
+    GPIO_InitTypeDef GPIO_InitStructure = {0};
     GPIO_InitStructure.GPIO_Pin = GPIO_Pin_18 | GPIO_Pin_19;
     GPIO_InitStructure.GPIO_Mode = GPIO_Mode_IPU;
     GPIO_Init (GPIOC, &GPIO_InitStructure);
