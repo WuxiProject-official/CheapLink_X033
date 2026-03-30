@@ -115,24 +115,32 @@ uint8_t SWD_Transfer (uint32_t request, uint32_t *data) {
     } else {
         R8_CTRL_WR &= 0x7F;
     }
-    // at this time PIOC is running, wait for transfer complete with timeout
-    uint32_t timeout = DAP_Data.transfer.retry_count;
-    if (timeout == 0U) {
-        timeout = 1000000U;
-    }
-    while (((R8_SYS_CFG & RB_DATA_SW_MR) == 0) && (timeout-- != 0U)) {
-        // wait for PIOC to complete or timeout
+    // Wait for PIOC to complete, with deadlock detection via hardware timer.
+    // TIMESTAMP_GET() runs at TIMESTAMP_CLOCK (1 MHz), so the difference is in µs.
+    // Unsigned subtraction wraps correctly in C, so this is safe across roll-overs.
+    int pioc_deadlocked = 0;
+    uint32_t t_start = TIMESTAMP_GET();
+    while ((R8_SYS_CFG & RB_DATA_SW_MR) == 0) {
+        if ((TIMESTAMP_GET() - t_start) >= PIOC_DEADLOCK_TIMEOUT_US) {
+            pioc_deadlocked = 1;
+            break;
+        }
     }
     uint8_t ack;
-    uint8_t sys_cfg_snapshot = R8_SYS_CFG;
-    if ((sys_cfg_snapshot & RB_DATA_SW_MR) == 0) {
+    if (pioc_deadlocked) {
+        // PIOC is unresponsive: reset and restart so subsequent transfers can succeed.
+        PIOC_DAP_Reset();
+        PIOC_DAP_Run();
+        PIOC_DAP_LoadCfg();
         ack = DAP_TRANSFER_FAULT;
     } else {
         ack = R8_CTRL_RD;  // get ACK from SFR_CTRL_RD
-    }
-    if ((request & DAP_TRANSFER_RnW) && (ack == DAP_TRANSFER_OK)) {
-        // read transfer
-        *data = R32_DATA_REG16_19;
+        // Only read the data register when the transfer completed successfully;
+        // on WAIT/FAULT the PIOC did not produce valid read data.
+        if ((request & DAP_TRANSFER_RnW) && (ack == DAP_TRANSFER_OK)) {
+            // read transfer
+            *data = R32_DATA_REG16_19;
+        }
     }
     // Enable MCU GPIOs
     tmp = GPIOA->CFGLR;

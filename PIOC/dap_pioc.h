@@ -13,6 +13,22 @@
 
 #include <stdint.h>
 
+/**
+ * Maximum time in microseconds to wait for PIOC to complete an SWD transfer.
+ * If the PIOC does not assert RB_DATA_SW_MR within this window, a deadlock is
+ * assumed, the PIOC core is reset and restarted, and DAP_TRANSFER_FAULT is
+ * returned so the host can recover.  Override in your build system if needed.
+ *
+ * Worst-case SWD transaction at 1 kHz clock:
+ *   1 (start) + 3 (APnDP/RnW/A[2:3]) + 1 (stop) + 1 (park)
+ *   + 3 (turnaround) + 3 (ACK) + 32 (data) + 1 (parity)
+ *   + 3 (turnaround) + 255 (max idle cycles) ≈ 303 bits → ~303 ms.
+ * 500 ms provides a comfortable safety margin while still catching hangs.
+ */
+#ifndef PIOC_DEADLOCK_TIMEOUT_US
+#define PIOC_DEADLOCK_TIMEOUT_US  500000U
+#endif
+
 typedef enum {
     PIOC_DAP_SWDTRANSFER = 0x01,
     PIOC_DAP_SWJSEQ = 0x02,
