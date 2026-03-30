@@ -16,7 +16,7 @@
                 "./DAP",
                 "./PIOC",
                 "./Middleware",
-                "./User"            
+                "./User"
             ],
             "defines": [
                 "__GNUC__",
