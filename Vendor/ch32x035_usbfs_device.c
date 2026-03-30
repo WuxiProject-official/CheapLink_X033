@@ -207,6 +207,7 @@ extern TaskHandle_t taskHandleLED;
  * @return  none
  */
 void USBFS_IRQHandler (void) {
+    GET_INT_SP();
 
     uint8_t intflag, intst, errflag;
     uint16_t len;
@@ -669,7 +670,9 @@ void USBFS_IRQHandler (void) {
         USBFSD->INT_FG = USBFS_UIF_BUS_RST;
         // Notify tasks
         xTaskNotifyFromISR (taskHandleDAP, 0x00010000UL, eSetBits, &taskWoken);
+#if DAP_WITH_CDC
         xTaskNotifyFromISR (taskHandleSER, 0x00010000UL, eSetBits, &taskWoken);
+#endif
         xTaskNotifyFromISR (taskHandleLED, 0x32, eSetValueWithOverwrite, NULL);  // LED: Yellow 1Hz
     } else if (intflag & USBFS_UIF_SUSPEND) {
         /* usb suspend interrupt processing */
@@ -677,7 +680,9 @@ void USBFS_IRQHandler (void) {
             USBFS_DevSleepStatus |= 0x02;
             // Notify tasks
             xTaskNotifyFromISR (taskHandleDAP, 0x00020000UL, eSetBits, &taskWoken);
+#if DAP_WITH_CDC
             xTaskNotifyFromISR (taskHandleSER, 0x00020000UL, eSetBits, &taskWoken);
+#endif
             xTaskNotifyFromISR (taskHandleLED, 0x32, eSetValueWithOverwrite, NULL);  // LED: Yellow 1Hz
             if (USBFS_DevSleepStatus == 0x03) {
                 /* Handling usb sleep here */
@@ -691,4 +696,5 @@ void USBFS_IRQHandler (void) {
         USBFSD->INT_FG = intflag;
     }
     portYIELD_FROM_ISR (taskWoken);
+    FREE_INT_SP();
 }

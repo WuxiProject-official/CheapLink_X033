@@ -1,6 +1,6 @@
 /*
  *  Task-Serial source file for firmware of CheapLink_X033
- *  Copyright (C) 2022-2025  WuxiProject
+ *  Copyright (C) 2022-2026  WuxiProject
  *
  *  SPDX-License-Identifier: MPL-2.0
  *
@@ -47,9 +47,9 @@ static volatile uint8_t CDCSerial_UpIdleUsb = 1;
 static volatile uint32_t CDCSerial_LastUpLen = 0;
 
 // Prepare data for IN endpoint upload.
-uint8_t CDCSerial_EPUpload (uint8_t *buf, uint16_t len) {
+uint8_t CDCSerial_EPUpload (volatile uint8_t *buf, uint16_t len) {
     CDCSerial_LastUpLen = len;
-    return USBFS_Endp_DataUp (DEF_UEP3, buf, len, DEF_UEP_DMA_LOAD);
+    return USBFS_Endp_DataUp (DEF_UEP3, (uint8_t *)buf, len, DEF_UEP_DMA_LOAD);
 }
 #endif
 
@@ -88,7 +88,7 @@ void CDCSerial_EpOUT_Handler (uint8_t len, BaseType_t *taskWoken) {
     CDCSerial_DownPtrUsb = CDCSerial_DownPtrUsb ? 0 : 1;
     CDCSerial_SetEPDNAddr (CDCQueueDown[CDCSerial_DownPtrUsb]);
     // Push buffer
-    xStreamBufferSendFromISR (sbDown, CDCQueueDown[!CDCSerial_DownPtrUsb], len, taskWoken);
+    xStreamBufferSendFromISR (sbDown, (const uint8_t *)CDCQueueDown[!CDCSerial_DownPtrUsb], len, taskWoken);
     // Send notification
     xTaskNotifyFromISR (taskHandleSER, 0x01, eSetBits, taskWoken);
 #endif
@@ -96,7 +96,7 @@ void CDCSerial_EpOUT_Handler (uint8_t len, BaseType_t *taskWoken) {
 
 void CDCSerial_EpIN_Handler (BaseType_t *taskWoken) {
 #if CDCSER_UP_ENABLE
-    uint16_t usbUpLen = xStreamBufferReceiveFromISR (sbUp, CDCQueueUp, CDCSER_EPUP_LEN, taskWoken);
+    uint16_t usbUpLen = xStreamBufferReceiveFromISR (sbUp, (uint8_t *)CDCQueueUp, CDCSER_EPUP_LEN, taskWoken);
     if (usbUpLen) {                                    // left data in queue
         CDCSerial_EPUpload (CDCQueueUp, usbUpLen);
     } else {                                           // empty queue
@@ -108,6 +108,7 @@ void CDCSerial_EpIN_Handler (BaseType_t *taskWoken) {
 #endif
 }
 
+// TODO: solve MEMCLEAR caused volatile related compiler warning
 extern void memset_v (volatile void *p, int val, size_t len);
 #define MEMCLEAR(x) (memset ((x), 0x00, sizeof ((x))))
 
@@ -158,9 +159,9 @@ void USART2_IRQHandler (void) {
             if ((USBFS_DevEnumStatus != 0) && ((USBFS_DevSleepStatus & 0x02) == 0)) {
                 // Push data
                 if (rxCnt > (CDCSER_DMARX_LEN >> 1)) {  // Buffer 1
-                    xStreamBufferSendFromISR (sbUp, &CDC_DMARxBuf[CDCSER_DMARX_LEN >> 1], rxCnt - (CDCSER_DMARX_LEN >> 1), &taskWoken);
+                    xStreamBufferSendFromISR (sbUp, (const uint8_t *)&CDC_DMARxBuf[CDCSER_DMARX_LEN >> 1], rxCnt - (CDCSER_DMARX_LEN >> 1), &taskWoken);
                 } else {                                // Buffer 0
-                    xStreamBufferSendFromISR (sbUp, &CDC_DMARxBuf[0], rxCnt, &taskWoken);
+                    xStreamBufferSendFromISR (sbUp, (const uint8_t *)&CDC_DMARxBuf[0], rxCnt, &taskWoken);
                 }
                 // Reset buffer
                 DMA1_Channel6->CNTR = CDCSER_DMARX_LEN;
@@ -210,7 +211,7 @@ void DMA1_Channel6_IRQHandler (void) {
         // Check if USB offline
         if ((USBFS_DevEnumStatus != 0) && ((USBFS_DevSleepStatus & 0x02) == 0)) {
             // Push data
-            xStreamBufferSendFromISR (sbUp, &CDC_DMARxBuf[CDCSER_DMARX_LEN >> 1], (CDCSER_DMARX_LEN >> 1), &taskWoken);
+            xStreamBufferSendFromISR (sbUp, (const uint8_t *)&CDC_DMARxBuf[CDCSER_DMARX_LEN >> 1], (CDCSER_DMARX_LEN >> 1), &taskWoken);
             // Notify main thread
             if (CDCSerial_UpIdleUsb)  // if USB Idle
             {
@@ -225,7 +226,7 @@ void DMA1_Channel6_IRQHandler (void) {
         // Check if USB offline
         if ((USBFS_DevEnumStatus != 0) && ((USBFS_DevSleepStatus & 0x02) == 0)) {
             // Push data
-            xStreamBufferSendFromISR (sbUp, &CDC_DMARxBuf[0], (CDCSER_DMARX_LEN >> 1), &taskWoken);
+            xStreamBufferSendFromISR (sbUp, (const uint8_t *)&CDC_DMARxBuf[0], (CDCSER_DMARX_LEN >> 1), &taskWoken);
             // Notify main thread
             if (CDCSerial_UpIdleUsb)  // if USB Idle
             {
@@ -248,7 +249,7 @@ void DMA1_Channel7_IRQHandler (void) {
 #if CDCSER_DOWN_ENABLE
         // Check if USB offline
         if ((USBFS_DevEnumStatus != 0) && ((USBFS_DevSleepStatus & 0x02) == 0)) {
-            uint16_t dmaTxLen = xStreamBufferReceiveFromISR (sbDown, CDC_DMATxBuf, CDCSER_DMATX_LEN, &taskWoken);
+            uint16_t dmaTxLen = xStreamBufferReceiveFromISR (sbDown, (uint8_t *)CDC_DMATxBuf, CDCSER_DMATX_LEN, &taskWoken);
             if (dmaTxLen) {
                 DMA1_Channel7->MADDR = (uint32_t)&CDC_DMATxBuf[0];
                 DMA1_Channel7->CNTR = dmaTxLen;
@@ -395,7 +396,7 @@ void task_SER (void *pvParameters) {
         if (notifyFlag & 0x00000001UL) {                          // Downstream packet pending
 #if CDCSER_DOWN_ENABLE
             if (xSemaphoreTake (semaDmaTx, pdMS_TO_TICKS (5))) {  // DMA not running
-                uint16_t dmaTxLen = xStreamBufferReceive (sbDown, CDC_DMATxBuf, CDCSER_DMATX_LEN, pdMS_TO_TICKS (5));
+                uint16_t dmaTxLen = xStreamBufferReceive (sbDown, (uint8_t *)CDC_DMATxBuf, CDCSER_DMATX_LEN, pdMS_TO_TICKS (5));
                 if (dmaTxLen) {
                     DMA1_Channel7->MADDR = (uint32_t)&CDC_DMATxBuf[0];
                     DMA1_Channel7->CNTR = dmaTxLen;
@@ -408,7 +409,7 @@ void task_SER (void *pvParameters) {
         }
         if (notifyFlag & 0x00000002UL) {  // Upstream packet pending
 #if CDCSER_UP_ENABLE
-            uint16_t usbUpLen = xStreamBufferReceive (sbUp, CDCQueueUp, CDCSER_EPUP_LEN, pdMS_TO_TICKS (1));
+            uint16_t usbUpLen = xStreamBufferReceive (sbUp, (uint8_t *)CDCQueueUp, CDCSER_EPUP_LEN, pdMS_TO_TICKS (1));
             if (usbUpLen) {
                 CDCSerial_UpIdleUsb = 0U;
                 CDCSerial_EPUpload (CDCQueueUp, usbUpLen);

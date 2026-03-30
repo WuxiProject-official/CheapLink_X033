@@ -1,6 +1,6 @@
 /*
  *  USB Queue Middleware
- *  Copyright (C) 2022-2025  WuxiProject
+ *  Copyright (C) 2022-2026  WuxiProject
  *
  *  SPDX-License-Identifier: MPL-2.0
  *
@@ -25,7 +25,7 @@
 /*
  * UQ_QUEUELEN: Defines the queue length
  */
-#define UQ_QUEUELEN 8
+#define UQ_QUEUELEN 20
 
 /*
  * UQ_PACKLEN_MAX: Defines the max length of USB packet received

@@ -28,13 +28,6 @@
 #ifndef __DAP_H__
 #define __DAP_H__
 
-// MRS workaround
-#define __INLINE __inline
-#define __STATIC_INLINE static __inline
-#define __STATIC_FORCEINLINE __attribute__((always_inline)) static __inline
-#define __WEAK __attribute__((weak))
-#define __ASM __asm
-
 // DAP Firmware Version
 #ifdef  DAP_FW_V1
 #define DAP_FW_VER                      "1.3.0"
@@ -289,8 +282,6 @@ extern void JTAG_WriteAbort(uint32_t data);
 extern uint8_t JTAG_Transfer(uint32_t request, uint32_t *data);
 extern uint8_t SWD_Transfer(uint32_t request, uint32_t *data);
 
-extern void Delayms(uint32_t delay);
-
 extern uint32_t SWO_Transport(const uint8_t *request, uint8_t *response);
 extern uint32_t SWO_Mode(const uint8_t *request, uint8_t *response);
 extern uint32_t SWO_Baudrate(const uint8_t *request, uint8_t *response);
@@ -332,7 +323,7 @@ extern void DAP_Setup(void);
 
 // Configurable delay for clock generation
 #ifndef DELAY_SLOW_CYCLES
-#define DELAY_SLOW_CYCLES       4U      // Number of cycles for one iteration
+#define DELAY_SLOW_CYCLES       6U      // Number of cycles for one iteration
 #endif
 __STATIC_FORCEINLINE void PIN_DELAY_SLOW(uint32_t delay)
 {

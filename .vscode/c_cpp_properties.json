@@ -14,6 +14,7 @@
                 "./RTOS/portable/GCC/RISC-V/chip_specific_extensions/RV32I_PFIC_no_extensions",
                 "./RTOS/portable/MemMang",
                 "./DAP",
+                "./PIOC",
                 "./Middleware",
                 "./User"
             ],
@@ -22,9 +23,9 @@
                 "__riscv_xlen=32",
                 "MSOS_DESC=2",
                 "DAP_WITH_CDC=1",
-                "USE_MDK_RESET_WORKAROUND=1"
+                "USE_MDK_RESET_WORKAROUND=1",
+                "USE_PIOC_ACC=1"
             ],
-            "compilerPath": "\"C:\\MounRiver\\MounRiver_Studio2\\resources\\app\\resources\\win32\\components\\WCH\\Toolchain\\RISC-V Embedded GCC12\\bin\\riscv-wch-elf-gcc.exe\"",
             "cStandard": "c99",
             "cppStandard": "c++03",
             "intelliSenseMode": "${default}"
