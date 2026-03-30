@@ -108,6 +108,7 @@ void CDCSerial_EpIN_Handler (BaseType_t *taskWoken) {
 #endif
 }
 
+// TODO: solve MEMCLEAR caused volatile related compiler warning
 extern void memset_v (volatile void *p, int val, size_t len);
 #define MEMCLEAR(x) (memset ((x), 0x00, sizeof ((x))))
 

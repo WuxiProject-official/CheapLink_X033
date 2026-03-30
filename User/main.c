@@ -24,8 +24,10 @@ extern TaskHandle_t taskHandleLED;
 extern void task_LED (void *pvParameters);
 extern TaskHandle_t taskHandleDAP;
 extern void task_DAP (void *pvParameters);
+#if DAP_WITH_CDC
 extern TaskHandle_t taskHandleSER;
 extern void task_SER (void *pvParameters);
+#endif
 
 extern void USBFS_IRQHandler (void);  // Assembly wrapper
 
@@ -62,7 +64,7 @@ __attribute__ ((noreturn)) int main (void) {
     SDI_Printf_Enable();
 #endif
     // Print hello info if in debug mode
-    PRINT ("CheapLink_X033 V1.0.3.0 running on CH32X035(%04X)-%08X%08X clk=%d\r\n",
+    PRINT ("CheapLink_X033 V1.1.0.0 running on CH32X035(%04X)-%08X%08X clk=%d\r\n",
            DBGMCU_GetCHIPID() >> 16, X035CHIPSN1, X035CHIPSN2, SystemCoreClock);
 
 #endif

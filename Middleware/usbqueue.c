@@ -90,6 +90,7 @@ void memset_v (volatile void *p, int val, size_t len) {
     }
 }
 
+// TODO: solve MEMCLEAR caused volatile related compiler warning
 #define MEMCLEAR(x) (memset ((x), 0x00, sizeof ((x))))
 
 volatile uint8_t UQ_InQueue[UQ_QUEUELEN][UQ_PACKLEN_MAX] __attribute__ ((aligned (4)));

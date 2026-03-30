@@ -3,7 +3,20 @@
         {
             "name": "obj",
             "includePath": [
-                "${workspaceFolder}/**"             
+                "./Debug",
+                "./Core",
+                "./Peripheral/inc",
+                "./Vendor",
+                "./RTOS/include",
+                "./RTOS/portable",
+                "./RTOS/portable/Common",
+                "./RTOS/portable/GCC/RISC-V",
+                "./RTOS/portable/GCC/RISC-V/chip_specific_extensions/RV32I_PFIC_no_extensions",
+                "./RTOS/portable/MemMang",
+                "./DAP",
+                "./PIOC",
+                "./Middleware",
+                "./User"            
             ],
             "defines": [
                 "__GNUC__",
