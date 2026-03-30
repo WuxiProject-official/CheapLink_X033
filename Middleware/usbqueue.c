@@ -119,7 +119,7 @@ void USBQueue_StatusReset() {
 #include "task.h"
 extern TaskHandle_t taskHandleDAP;
 
-void USBQueue_EpOUT_Handler (uint8_t len,BaseType_t *taskWoken) {
+void USBQueue_EpOUT_Handler (uint8_t len, BaseType_t *taskWoken) {
     if (UQ_InQueue[UQ_InPtrIn][0] == ID_DAP_TransferAbort) {
         DAP_TransferAbort = 1U;
     } else {

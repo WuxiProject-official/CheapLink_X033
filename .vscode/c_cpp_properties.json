@@ -6,6 +6,7 @@
                 "./Debug",
                 "./Core",
                 "./Peripheral/inc",
+                "./Vendor",
                 "./RTOS/include",
                 "./RTOS/portable",
                 "./RTOS/portable/Common",
@@ -20,8 +21,12 @@
                 "__GNUC__",
                 "__riscv_xlen=32",
                 "MSOS_DESC=2",
-                "DAP_WITH_CDC=1"
+                "DAP_WITH_CDC=1",
+                "USE_MDK_RESET_WORKAROUND=1"
             ],
+            "compilerPath": "\"C:\\MounRiver\\MounRiver_Studio2\\resources\\app\\resources\\win32\\components\\WCH\\Toolchain\\RISC-V Embedded GCC12\\bin\\riscv-wch-elf-gcc.exe\"",
+            "cStandard": "c99",
+            "cppStandard": "c++03",
             "intelliSenseMode": "${default}"
         }
     ],

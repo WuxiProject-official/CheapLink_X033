@@ -42,8 +42,7 @@ volatile uint8_t USBFS_Endp_Busy[DEF_UEP_NUM];
 
 /******************************************************************************/
 /* Interrupt Service Routine Declaration*/
-// DO NOT use `__attribute__ ((interrupt()))` for this wrapped IRQ_Handler!
-void USBFS_IRQHandler_C (void)  __attribute__ ((section (".highcode")));
+void USBFS_IRQHandler (void)  __attribute__((interrupt()));// __attribute__ ((section (".highcode")));
 
 /*********************************************************************
  * @fn      USBFS_RCC_Init
@@ -201,13 +200,13 @@ extern TaskHandle_t taskHandleSER;
 extern TaskHandle_t taskHandleLED;
 
 /*********************************************************************
- * @fn      USBFS_IRQHandler_C
+ * @fn      USBFS_IRQHandler
  *
  * @brief   This function handles HD-FS exception.
  *
  * @return  none
  */
-void USBFS_IRQHandler_C (void) {
+void USBFS_IRQHandler (void) {
 
     uint8_t intflag, intst, errflag;
     uint16_t len;
