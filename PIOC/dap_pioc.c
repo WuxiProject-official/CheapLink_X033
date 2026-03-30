@@ -43,7 +43,7 @@ void PIOC_DAP_Halt (void) {
     R8_SYS_CFG &= (~RB_MST_CLK_GATE);
 }
 
-__attribute__ ((always_inline)) void PIOC_DAP_Cmd (PIOC_DAPCmdType_t cmd, uint8_t cmd_arg) {
+void PIOC_DAP_Cmd (PIOC_DAPCmdType_t cmd, uint8_t cmd_arg) {
     // SFR_DATA_REG3 is used for command type
     R8_DATA_REG3 = (uint8_t)cmd;
     // SFR_DATA_REG4 is used for command argument
@@ -54,7 +54,7 @@ uint8_t PIOC_DAP_ReadCmdResult (void) {
     return R8_DATA_REG5;  // SFR_DATA_REG5 is used for command result
 }
 
-__attribute__ ((always_inline)) void PIOC_DAP_WriteSFR (uint16_t index, uint8_t value) {
+void PIOC_DAP_WriteSFR (uint16_t index, uint8_t value) {
     (*((volatile unsigned char *)(PIOC_SFR_BASE + 0x20 + index))) = value;
 }
 
@@ -115,13 +115,22 @@ uint8_t SWD_Transfer (uint32_t request, uint32_t *data) {
     } else {
         R8_CTRL_WR &= 0x7F;
     }
-    // at this time PIOC is running, wait for transfer complete
-    while ((R8_SYS_CFG & RB_DATA_SW_MR) == 0){
-        // TODO: add timeout here to avoid infinite loop
-        ;
+    // at this time PIOC is running, wait for transfer complete with timeout
+    uint32_t timeout = DAP_Data.transfer.retry_count;
+    if (timeout == 0U) {
+        timeout = 1000000U;
     }
-    uint8_t ack = R8_CTRL_RD;  // get ACK from SFR_CTRL_RD
-    if (request & DAP_TRANSFER_RnW) {
+    while (((R8_SYS_CFG & RB_DATA_SW_MR) == 0) && (timeout-- != 0U)) {
+        // wait for PIOC to complete or timeout
+    }
+    uint8_t ack;
+    uint8_t sys_cfg_snapshot = R8_SYS_CFG;
+    if ((sys_cfg_snapshot & RB_DATA_SW_MR) == 0) {
+        ack = DAP_TRANSFER_FAULT;
+    } else {
+        ack = R8_CTRL_RD;  // get ACK from SFR_CTRL_RD
+    }
+    if ((request & DAP_TRANSFER_RnW) && (ack == DAP_TRANSFER_OK)) {
         // read transfer
         *data = R32_DATA_REG16_19;
     }
