@@ -1,6 +1,10 @@
 # CheapLink_X033
 
-一个廉价的CMSIS-DAP调试器实现。
+![GitHub Release](https://img.shields.io/github/v/release/WuxiProject-official/CheapLink_X033?include_prereleases&display_name=release&link=https%3A%2F%2Fgithub.com%2FWuxiProject-official%2FCheapLink_X033%2Freleases%2Flatest)
+![GitHub Downloads (all assets, all releases)](https://img.shields.io/github/downloads/WuxiProject-official/CheapLink_X033/total?link=https%3A%2F%2Fgithub.com%2FWuxiProject-official%2FCheapLink_X033%2Freleases%2Flatest)
+![GitHub License](https://img.shields.io/github/license/WuxiProject-official/CheapLink_X033?link=https%3A%2F%2Fgithub.com%2FWuxiProject-official%2FCheapLink_X033%2Fblob%2Fmain%2FREADME.zh-cn.md%23%25E8%25AE%25B8%25E5%258F%25AF%25E8%25AF%2581%25E4%25BF%25A1%25E6%2581%25AF-license-information)
+
+一个廉价的CMSIS-DAP调试器实现。  
 To read English version of this file，please turn to [README.md](README.md).  
 
 ## 特性
