@@ -1,6 +1,10 @@
 # CheapLink_X033
 
-A cheap CMSIS-DAP debugger implemention.
+![GitHub Release](https://img.shields.io/github/v/release/WuxiProject-official/CheapLink_X033?include_prereleases&display_name=release&link=https%3A%2F%2Fgithub.com%2FWuxiProject-official%2FCheapLink_X033%2Freleases%2Flatest)
+![GitHub Downloads (all assets, all releases)](https://img.shields.io/github/downloads/WuxiProject-official/CheapLink_X033/total?link=https%3A%2F%2Fgithub.com%2FWuxiProject-official%2FCheapLink_X033%2Freleases%2Flatest)
+![GitHub License](https://img.shields.io/github/license/WuxiProject-official/CheapLink_X033?link=https%3A%2F%2Fgithub.com%2FWuxiProject-official%2FCheapLink_X033%3Ftab%3Dreadme-ov-file%23license-information)
+
+A cheap CMSIS-DAP debugger implemention.  
 要阅读该文件的简体中文版本，请转到[README.zh-cn.md](README.zh-cn.md)。  
 
 ## Features
