@@ -115,20 +115,22 @@ uint8_t SWD_Transfer (uint32_t request, uint32_t *data) {
     } else {
         R8_CTRL_WR &= 0x7F;
     }
+    /* PIOC running... */
     // Wait for PIOC to complete, with deadlock detection via hardware timer.
     // TIMESTAMP_GET() runs at TIMESTAMP_CLOCK (1 MHz), so the difference is in µs.
     // Unsigned subtraction wraps correctly in C, so this is safe across roll-overs.
-    int pioc_deadlocked = 0;
-    uint32_t t_start = TIMESTAMP_GET();
+    int flagDeadlock = 0;
+    uint32_t tBegin = TIMESTAMP_GET();
     while ((R8_SYS_CFG & RB_DATA_SW_MR) == 0) {
-        if ((TIMESTAMP_GET() - t_start) >= PIOC_DEADLOCK_TIMEOUT_US) {
-            pioc_deadlocked = 1;
+        if ((TIMESTAMP_GET() - tBegin) >= PIOC_DEADLOCK_TIMEOUT_US) {
+            flagDeadlock = 1;
             break;
         }
     }
     uint8_t ack;
-    if (pioc_deadlocked) {
+    if (flagDeadlock) {
         // PIOC is unresponsive: reset and restart so subsequent transfers can succeed.
+        PIOC_DAP_Halt();
         PIOC_DAP_Reset();
         PIOC_DAP_Run();
         PIOC_DAP_LoadCfg();

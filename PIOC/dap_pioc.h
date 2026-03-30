@@ -23,10 +23,10 @@
  *   1 (start) + 3 (APnDP/RnW/A[2:3]) + 1 (stop) + 1 (park)
  *   + 3 (turnaround) + 3 (ACK) + 32 (data) + 1 (parity)
  *   + 3 (turnaround) + 255 (max idle cycles) ≈ 303 bits → ~303 ms.
- * 500 ms provides a comfortable safety margin while still catching hangs.
+ * 1000 ms provides a comfortable safety margin while still catching hangs.
  */
 #ifndef PIOC_DEADLOCK_TIMEOUT_US
-#define PIOC_DEADLOCK_TIMEOUT_US  500000U
+#define PIOC_DEADLOCK_TIMEOUT_US  1000000U
 #endif
 
 typedef enum {
