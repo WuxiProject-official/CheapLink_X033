@@ -44,7 +44,7 @@ void vApplicationStackOverflowHook (TaskHandle_t xTask, char *pcTaskName) {
     while (1);
 }
 
-static void ConvertUint32ToUnicode16Str(uint32_t num, unsigned char *str) {
+static void ConvertUint32ToUnicode16Str (uint32_t num, unsigned char *str) {
     // Note: this does not append null terminator
     for (uint32_t i = 0; i < 8; i++) {
         uint8_t digit = (num >> ((7 - i) << 2)) & 0x0F;
@@ -75,9 +75,51 @@ __attribute__ ((noreturn)) int main (void) {
     CDCSerial_QueueReset();
 #endif
 
+    // Configure clocks
+    RCC_APB2PeriphClockCmd (RCC_APB2Periph_GPIOA | RCC_APB2Periph_GPIOC | RCC_APB2Periph_AFIO, ENABLE);
+    // Prepare GPIO for LED
+    GPIO_InitTypeDef GPIO_InitStructure = {0};
+    GPIOA->BSHR = GPIO_Pin_0 | GPIO_Pin_1;
+    GPIOC->BSHR = GPIO_Pin_3;
+    GPIO_InitStructure.GPIO_Pin = GPIO_Pin_3;
+    GPIO_InitStructure.GPIO_Mode = GPIO_Mode_Out_PP;
+    GPIO_InitStructure.GPIO_Speed = GPIO_Speed_50MHz;
+    GPIO_Init (GPIOC, &GPIO_InitStructure);
+    GPIO_InitStructure.GPIO_Pin = GPIO_Pin_0 | GPIO_Pin_1;
+    GPIO_Init (GPIOA, &GPIO_InitStructure);
+
+#if USE_PIOC_ACC
+    // Test electrical connection, warn here if not connected
+    uint32_t flagPIOCConnected = 1;
+    GPIO_PinRemapConfig (GPIO_Remap_SWJ_Disable, ENABLE);
+    GPIO_InitStructure.GPIO_Pin = GPIO_Pin_18 | GPIO_Pin_19;
+    GPIO_InitStructure.GPIO_Mode = GPIO_Mode_IPU;
+    GPIO_Init (GPIOC, &GPIO_InitStructure);
+    GPIO_InitStructure.GPIO_Pin = GPIO_Pin_5 | GPIO_Pin_7;
+    GPIO_InitStructure.GPIO_Mode = GPIO_Mode_Out_PP;
+    GPIO_InitStructure.GPIO_Speed = GPIO_Speed_50MHz;
+    GPIO_Init (GPIOA, &GPIO_InitStructure);
+    GPIO_SetBits (GPIOA, GPIO_Pin_5 | GPIO_Pin_7);
+    Delay_Us (10);
+    if (GPIO_ReadInputDataBit (GPIOC, GPIO_Pin_18) != SET || GPIO_ReadInputDataBit (GPIOC, GPIO_Pin_19) != SET)
+        flagPIOCConnected = 0;
+    GPIO_ResetBits (GPIOA, GPIO_Pin_5 | GPIO_Pin_7);
+    Delay_Us (10);
+    if (GPIO_ReadInputDataBit (GPIOC, GPIO_Pin_18) != RESET || GPIO_ReadInputDataBit (GPIOC, GPIO_Pin_19) != RESET)
+        flagPIOCConnected = 0;
+    if (!flagPIOCConnected) {
+        GPIOC->BCR = GPIO_Pin_3;
+        GPIOA->BSHR = GPIO_Pin_0 | GPIO_Pin_1;
+        Delay_Ms (2000);
+    }
+    GPIO_InitStructure.GPIO_Pin = GPIO_Pin_5 | GPIO_Pin_7;
+    GPIO_InitStructure.GPIO_Mode = GPIO_Mode_AIN;
+    GPIO_Init (GPIOA, &GPIO_InitStructure);
+#endif
+
     // Prepare USB desc SN
     uint32_t chipNum = (X035CHIPSN1 ^ ~X035CHIPSN2);
-    ConvertUint32ToUnicode16Str(chipNum, MySerNumInfo + 12);
+    ConvertUint32ToUnicode16Str (chipNum, MySerNumInfo + 12);
     // Init USB
     USBFS_RCC_Init();
     USBFS_Device_Init (ENABLE, PWR_VDD_SupplyVoltage());
