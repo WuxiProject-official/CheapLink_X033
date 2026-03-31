@@ -114,11 +114,17 @@ static void Set_Clock_Delay(uint32_t clock)
 		uint32_t D1 = pioc_delay / DAP_PIOC_DelayL1_Cycles;
 		uint32_t D0 = ((pioc_delay % DAP_PIOC_DelayL1_Cycles) + (DAP_PIOC_DelayL2_Cycles - 1U)) / DAP_PIOC_DelayL2_Cycles;
 
-		// Clamp to valid range (0-255)
-		if (D0 > 255U)
-			D0 = 255U;
+		// Clamp to valid range (0-255), saturating to maximum representable delay
 		if (D1 > 255U)
+		{
+			// Requested delay exceeds hardware range: use maximum delay
 			D1 = 255U;
+			D0 = 255U;
+		}
+		else if (D0 > 255U)
+		{
+			D0 = 255U;
+		}
 
 		DAP_PIOC_ClockDelay[0] = (uint8_t)D0;
 		DAP_PIOC_ClockDelay[1] = (uint8_t)D1;
