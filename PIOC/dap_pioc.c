@@ -65,7 +65,6 @@ void PIOC_DAP_PutData (uint8_t *data, uint16_t len) {
 #include "DAP_config.h"
 #include "DAP.h"
 extern volatile uint8_t DAP_PIOC_ClockDelay[2];
-extern volatile uint8_t DAP_PIOC_FastClock;
 
 void PIOC_DAP_LoadCfg (void) {
     // SFR_DATA_REG0 is used for DAP turnaround cycle
@@ -88,7 +87,6 @@ int PIOC_DAP_GetItFlag (void) {
 //   request: A[3:2] RnW APnDP
 //   data:    DATA[31:0]
 //   return:  ACK[2:0]
-__attribute__((section(".highcode")))
 uint8_t SWD_Transfer (uint32_t request, uint32_t *data) {
     uint32_t tmp;
     // Enable PIOC GPIOs
@@ -110,11 +108,11 @@ uint8_t SWD_Transfer (uint32_t request, uint32_t *data) {
     PIOC_DAP_Cmd (PIOC_DAP_SWDTRANSFER, (uint8_t)request);
     (void)R8_CTRL_RD;  // Clear flag
     // Set SFR_CTRL_WR to start PIOC
-    if (DAP_PIOC_FastClock != 0) {
+    if (DAP_Data.fast_clock != 0) {
         // for fast clock, set SFR_CTRL_WR[7]=1
-        R8_CTRL_WR = 0x80;
+        R8_CTRL_WR |= 0x80;
     } else {
-        R8_CTRL_WR = 0x00;
+        R8_CTRL_WR &= 0x7F;
     }
     /* PIOC running... */
     // Wait for PIOC to complete, with deadlock detection via hardware timer.
