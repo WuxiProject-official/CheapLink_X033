@@ -65,6 +65,7 @@ void PIOC_DAP_PutData (uint8_t *data, uint16_t len) {
 #include "DAP_config.h"
 #include "DAP.h"
 extern volatile uint8_t DAP_PIOC_ClockDelay[2];
+extern volatile uint8_t DAP_PIOC_FastClock;
 
 void PIOC_DAP_LoadCfg (void) {
     // SFR_DATA_REG0 is used for DAP turnaround cycle
@@ -83,10 +84,37 @@ int PIOC_DAP_GetItFlag (void) {
     return (R8_SYS_CFG & RB_INT_REQ) != 0;
 }
 
+// For unknown reason, highcode may explode PIOC's stability,
+// so we put the PIOC run-and-wait routine in normal code section.
+__attribute__((noinline))
+int PIOC_DAP_RunAndWait(void) {
+    // Set SFR_CTRL_WR to start PIOC
+    if (DAP_PIOC_FastClock != 0) {
+        // for fast clock, set SFR_CTRL_WR[7]=1
+        R8_CTRL_WR = 0x80;
+    } else {
+        R8_CTRL_WR = 0x00;
+    }
+    /* PIOC running... */
+    // Wait for PIOC to complete, with deadlock detection via hardware timer.
+    // TIMESTAMP_GET() runs at TIMESTAMP_CLOCK (1 MHz), so the difference is in µs.
+    // Unsigned subtraction wraps correctly in C, so this is safe across roll-overs.
+    int flagDeadlock = 0;
+    uint32_t tBegin = TIMESTAMP_GET();
+    while ((R8_SYS_CFG & RB_DATA_SW_MR) == 0) {
+        if ((TIMESTAMP_GET() - tBegin) >= PIOC_DEADLOCK_TIMEOUT_US) {
+            flagDeadlock = -1;
+            break;
+        }
+    }
+    return flagDeadlock;
+}
+
 // SWD Transfer I/O
 //   request: A[3:2] RnW APnDP
 //   data:    DATA[31:0]
 //   return:  ACK[2:0]
+__attribute__((section(".highcode")))
 uint8_t SWD_Transfer (uint32_t request, uint32_t *data) {
     uint32_t tmp;
     // Enable PIOC GPIOs
@@ -106,28 +134,10 @@ uint8_t SWD_Transfer (uint32_t request, uint32_t *data) {
         R32_DATA_REG16_19 = *data;
     }
     PIOC_DAP_Cmd (PIOC_DAP_SWDTRANSFER, (uint8_t)request);
-    (void)R8_CTRL_RD;  // Clear flag
-    // Set SFR_CTRL_WR to start PIOC
-    if (DAP_Data.fast_clock != 0) {
-        // for fast clock, set SFR_CTRL_WR[7]=1
-        R8_CTRL_WR |= 0x80;
-    } else {
-        R8_CTRL_WR &= 0x7F;
-    }
-    /* PIOC running... */
-    // Wait for PIOC to complete, with deadlock detection via hardware timer.
-    // TIMESTAMP_GET() runs at TIMESTAMP_CLOCK (1 MHz), so the difference is in µs.
-    // Unsigned subtraction wraps correctly in C, so this is safe across roll-overs.
-    int flagDeadlock = 0;
-    uint32_t tBegin = TIMESTAMP_GET();
-    while ((R8_SYS_CFG & RB_DATA_SW_MR) == 0) {
-        if ((TIMESTAMP_GET() - tBegin) >= PIOC_DEADLOCK_TIMEOUT_US) {
-            flagDeadlock = 1;
-            break;
-        }
-    }
+    (void)R8_CTRL_RD;  // A read operation to clear flag
+    int piocResult = PIOC_DAP_RunAndWait();
     uint8_t ack;
-    if (flagDeadlock) {
+    if (piocResult != 0) {
         // PIOC is unresponsive: reset and restart so subsequent transfers can succeed.
         PIOC_DAP_Halt();
         PIOC_DAP_Reset();
