@@ -51,9 +51,11 @@ volatile uint8_t DAP_TransferAbort;  // Transfer Abort Flag
 
 #if USE_PIOC_ACC
 #include "dap_pioc.h"
-volatile uint8_t DAP_PIOC_ClockDelay[2];  // delay for SW-DP clock generation (PIOC)
-static const uint32_t DAP_PIOC_DelayL1_Cycles=770U;
-static const uint32_t DAP_PIOC_DelayL2_Cycles=3U;
+volatile uint8_t DAP_PIOC_ClockDelay[2]; // delay for SW-DP clock generation (PIOC)
+volatile uint8_t DAP_PIOC_FastClock; // flag for using fast clock mode in PIOC
+static const uint32_t DAP_PIOC_DelayL1_Cycles = 768U;
+static const uint32_t DAP_PIOC_DelayL2_Cycles = 3U;
+static const uint32_t DAP_PIOC_DelayL2_BaseCycles = 11U;
 #endif
 
 static const char DAP_FW_Ver[] = DAP_FW_VER;
@@ -68,78 +70,13 @@ static void Set_Clock_Delay(uint32_t clock)
 	{
 		DAP_Data.fast_clock = 1U;
 		DAP_Data.clock_delay = 1U;
-#if USE_PIOC_ACC
-		DAP_PIOC_ClockDelay[0] = 1U;
-		DAP_PIOC_ClockDelay[1] = 0U;
-#endif
 	}
 	else
 	{
 		DAP_Data.fast_clock = 0U;
 
 		delay = ((CPU_CLOCK / 2U) + (clock - 1U)) / clock;
-#if USE_PIOC_ACC
-		/*
-		 * PIOC delay cycle calculation
-		 * delay_cycles = 770 * D1 + 3 * D0 + 10,
-		 * where D0 in [1,255], D1 in [0,255].
-		 */
-		{
-			uint32_t pioc_delay;
-			uint32_t d0;
-			uint32_t d1;
-			uint32_t rem;
 
-			/* 1 cycle is consumed by PIOC IO operation itself */
-			if (delay > 1U)
-			{
-				pioc_delay = delay - 1U;
-			}
-			else
-			{
-				pioc_delay = 1U;
-			}
-
-			/* DELAY_L2 has fixed 10-cycle overhead in slow path */
-			if (pioc_delay > 10U)
-			{
-				pioc_delay -= 10U;
-			}
-			else
-			{
-				pioc_delay = 0U;
-			}
-
-			d1 = pioc_delay / DAP_PIOC_DelayL1_Cycles;
-			if (d1 > 255U)
-			{
-				d1 = 255U;
-			}
-
-			rem = pioc_delay - (d1 * DAP_PIOC_DelayL1_Cycles);
-			d0 = (rem + (DAP_PIOC_DelayL2_Cycles - 1U)) / DAP_PIOC_DelayL2_Cycles;
-			if (d0 < 1U)
-			{
-				d0 = 1U;
-			}else if (d0 > 255U)
-			{
-				if (d1 < 255U)
-				{
-					d1++;
-					d0 = 1U;
-				}
-				else
-				{
-					d0 = 255U;
-				}
-			}
-
-			DAP_PIOC_ClockDelay[0] = (uint8_t) d0;
-			DAP_PIOC_ClockDelay[1] = (uint8_t) d1;
-			PIOC_DAP_WriteSFR(6, DAP_PIOC_ClockDelay[0]);
-			PIOC_DAP_WriteSFR(7, DAP_PIOC_ClockDelay[1]);
-		}
-#endif
 		/* GPIO delay cycle calculation */
 		if (delay > IO_PORT_WRITE_CYCLES)
 		{
@@ -153,6 +90,50 @@ static void Set_Clock_Delay(uint32_t clock)
 
 		DAP_Data.clock_delay = delay;
 	}
+#if USE_PIOC_ACC
+	// PIOC delay calculation
+	if (clock >= ((CPU_CLOCK / 2U) / (1U + DAP_PIOC_DelayL2_BaseCycles)))
+	{
+		// Use fast mode, ClockDelay is ignored
+		DAP_PIOC_ClockDelay[0] = 0U;
+		DAP_PIOC_ClockDelay[1] = 0U;
+		DAP_PIOC_FastClock = 1U;
+	}
+	else
+	{
+		// Use slow mode
+		DAP_PIOC_FastClock = 0U;
+		uint32_t totalDelay = ((CPU_CLOCK / 2U) + (clock - 1U)) / clock;
+
+		// IO operation takes 1 cycle
+		uint32_t pioc_delay = (totalDelay > 1U) ? (totalDelay - 1U) : 0U;
+		// Deduct base cycles for L2 delay
+		pioc_delay = (pioc_delay > DAP_PIOC_DelayL2_BaseCycles) ? (pioc_delay - DAP_PIOC_DelayL2_BaseCycles) : 0U;
+
+		// PIOC DELAY_L2: 768D1+3D0+10 for loops; 3D0+11 if D1=0
+		uint32_t D1 = pioc_delay / DAP_PIOC_DelayL1_Cycles;
+		uint32_t D0 = ((pioc_delay % DAP_PIOC_DelayL1_Cycles) + (DAP_PIOC_DelayL2_Cycles - 1U)) / DAP_PIOC_DelayL2_Cycles;
+
+		// Clamp to valid range (0-255), saturating to maximum representable delay
+		if (D1 > 255U)
+		{
+			// Requested delay exceeds hardware range: use maximum delay
+			D1 = 255U;
+			D0 = 255U;
+		}
+		else if (D0 > 255U)
+		{
+			D0 = 255U;
+		}
+
+		DAP_PIOC_ClockDelay[0] = (uint8_t)D0;
+		DAP_PIOC_ClockDelay[1] = (uint8_t)D1;
+
+		// Write to PIOC SFR
+		PIOC_DAP_WriteSFR(6, DAP_PIOC_ClockDelay[0]);
+		PIOC_DAP_WriteSFR(7, DAP_PIOC_ClockDelay[1]);
+	}
+#endif
 }
 
 // Get DAP Information
