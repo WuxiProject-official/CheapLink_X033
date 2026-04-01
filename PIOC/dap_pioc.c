@@ -84,9 +84,7 @@ int PIOC_DAP_GetItFlag (void) {
     return (R8_SYS_CFG & RB_INT_REQ) != 0;
 }
 
-// For unknown reason, highcode may explode PIOC's stability,
-// so we put the PIOC run-and-wait routine in normal code section.
-__attribute__((noinline))
+__attribute__((section(".highcode")))
 int PIOC_DAP_RunAndWait(void) {
     // Set SFR_CTRL_WR to start PIOC
     if (DAP_PIOC_FastClock != 0) {
@@ -143,7 +141,7 @@ uint8_t SWD_Transfer (uint32_t request, uint32_t *data) {
         PIOC_DAP_Reset();
         PIOC_DAP_Run();
         PIOC_DAP_LoadCfg();
-        ack = DAP_TRANSFER_FAULT;
+        ack = 0x99;  // non-standard error value to indicate PIOC timeout failure
     } else {
         ack = R8_CTRL_RD;  // get ACK from SFR_CTRL_RD
         // Only read the data register when the transfer completed successfully;
