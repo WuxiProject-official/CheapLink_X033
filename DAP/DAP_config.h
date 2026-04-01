@@ -591,7 +591,15 @@ extern volatile uint32_t SYSCNT;
  \return Current timestamp value.
  */
 __STATIC_INLINE uint32_t TIMESTAMP_GET (void) {
-    return SYSCNT | (TIM3->CNT);
+    uint32_t sysCnt1, sysCnt2, timCnt;
+    
+    do {
+        sysCnt1 = SYSCNT;
+        timCnt = TIM3->CNT;
+        sysCnt2 = SYSCNT;
+    } while(sysCnt1 != sysCnt2);
+    
+    return sysCnt1 | timCnt;
 }
 
 ///@}
