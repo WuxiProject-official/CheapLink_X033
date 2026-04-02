@@ -66,6 +66,7 @@ void PIOC_DAP_PutData (uint8_t *data, uint16_t len) {
 #include "DAP.h"
 extern volatile uint8_t DAP_PIOC_ClockDelay[2];
 extern volatile uint8_t DAP_PIOC_FastClock;
+extern volatile uint8_t DAP_PIOC_FallbackFlag;
 
 void PIOC_DAP_LoadCfg (void) {
     // SFR_DATA_REG0 is used for DAP turnaround cycle
@@ -108,12 +109,17 @@ int PIOC_DAP_RunAndWait(void) {
     return flagDeadlock;
 }
 
+extern uint8_t SWD_Transfer_GPIO(uint32_t request, uint32_t *data);
+
 // SWD Transfer I/O
 //   request: A[3:2] RnW APnDP
 //   data:    DATA[31:0]
 //   return:  ACK[2:0]
 __attribute__((section(".highcode")))
 uint8_t SWD_Transfer (uint32_t request, uint32_t *data) {
+    if(DAP_PIOC_FallbackFlag){
+        return SWD_Transfer_GPIO(request, data);
+    }
     uint32_t tmp;
     // Enable PIOC GPIOs
     tmp = GPIOC->CFGXR;

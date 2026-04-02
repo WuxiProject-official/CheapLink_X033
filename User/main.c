@@ -53,6 +53,8 @@ static void ConvertUint32ToUnicode16Str (uint32_t num, unsigned char *str) {
     }
 }
 
+volatile uint8_t DAP_PIOC_FallbackFlag = 0;
+
 __attribute__ ((noreturn)) int main (void) {
     NVIC_PriorityGroupConfig (NVIC_PriorityGroup_0);
     SystemCoreClockUpdate();
@@ -110,6 +112,7 @@ __attribute__ ((noreturn)) int main (void) {
     if (!flagPIOCConnected) {
         GPIOC->BCR = GPIO_Pin_3;
         GPIOA->BSHR = GPIO_Pin_0 | GPIO_Pin_1;
+        DAP_PIOC_FallbackFlag = 1;
         Delay_Ms (2000);
     }
     GPIO_InitStructure.GPIO_Pin = GPIO_Pin_5 | GPIO_Pin_7;

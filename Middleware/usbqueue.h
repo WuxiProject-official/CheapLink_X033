@@ -25,7 +25,11 @@
 /*
  * UQ_QUEUELEN: Defines the queue length
  */
+#if (USE_PIOC_ACC)
 #define UQ_QUEUELEN 20
+#else
+#define UQ_QUEUELEN 12
+#endif
 
 /*
  * UQ_PACKLEN_MAX: Defines the max length of USB packet received
