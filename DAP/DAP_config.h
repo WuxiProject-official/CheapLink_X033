@@ -97,7 +97,11 @@
 /// This configuration settings is used to optimize the communication performance with the
 /// debugger and depends on the USB peripheral. For devices with limited RAM or USB buffer the
 /// setting can be reduced (valid range is 1 .. 255).
-#define DAP_PACKET_COUNT 8U  ///< Specifies number of packets buffered.
+#if (USE_PIOC_ACC)
+#define DAP_PACKET_COUNT 20U  ///< Specifies number of packets buffered.
+#else
+#define DAP_PACKET_COUNT 12U  ///< Specifies number of packets buffered.
+#endif
 
 /// Indicate that UART Serial Wire Output (SWO) trace is available.
 /// This information is returned by the command \ref DAP_Info as part of <b>Capabilities</b>.
