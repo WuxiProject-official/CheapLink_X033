@@ -46,10 +46,14 @@ DAP_DATA_D7			EQU		SFR_DATA_REG23
 PIOC_CMD_CODE		EQU		SFR_CTRL_WR
 PIOC_CMD_RESP		EQU		SFR_CTRL_RD
 ;
+; PIOC_CMD_CODE bit definitions:
+;   Bit [7:5]: RFU
+;   Bit 4: FastPath enable
+;   Bit [3:0]: FastPath skip cycle
 ;
 ; ================
 ; Delay function
-; outer-CALL used 2cyc, RET used 2cyc, 768D1+3D0+7 for loops; 3D0+8 if D1=0
+; outer-CALL used 2cyc. RET used 2cyc, so func takes 768D1+3D0+7 if D1>0; 3D0+8 if D1=0&D0>0
 ; BREAKS: A, Z, SFR_INDIR_ADDR2
 DELAY_L2:			MOV		DAP_DELAY_CYC_D1,A
 					CMPZ	0x00,DELAY_L2_3
@@ -66,20 +70,211 @@ DELAY_L2_4:			ADDL	0XFF
 DELAY_L2_5:			RET
 ;
 ; ================
-; DAP turn around, just toggle SWDIO for n cycles. return if Z=1 before start
-; TAKES: A as loopCnt_n, Z as skipFlag
-; BREAKS: A, Z, SFR_DATA_EXCH
-DAP_TURN:			MOVA	SFR_DATA_EXCH
-					JNZ		DAP_TURN_1
-					RET
-DAP_TURN_1:			BC		SFR_PORT_IO,SB_PORT_OUT1
-					BTSS	PIOC_CMD_CODE,7
-					CALL	DELAY_L2
+; DAP PACKET_REQUEST, with short delay
+; TAKES: SFR_DATA_EXCH as request
+; BREAKS: A, Z, SFR_DATA_EXCH, SFR_INDIR_ADDR
+DAP_PACKREQ_FAST:	MOV		PIOC_CMD_CODE,A
+					ANDL	0B00001111					; extract skip cycle
+;					MOVL	0x0A
+					CMPL	10
+					JC		DAP_PACKREQ_EXFAST
+					BS		SFR_PORT_IO,SB_PORT_OUT0	; - START_BIT(1)
+					BC		SFR_PORT_IO,SB_PORT_OUT1
+					ADD		SFR_PRG_COUNT,F				; skip cycles as inline delay
+					NOP
+					NOP
+					NOP
+					NOP
+					NOP
+					NOP
+					NOP
+					NOP
+					NOP
+					NOP
 					BS		SFR_PORT_IO,SB_PORT_OUT1
-					BTSS	PIOC_CMD_CODE,7
-					CALL	DELAY_L2
-					DECSZ	SFR_DATA_EXCH,F
-					JMP		DAP_TURN_1
+					ADD		SFR_PRG_COUNT,F				; skip cycles as inline delay
+					NOP
+					NOP
+					NOP
+					NOP
+					NOP
+					NOP
+					NOP
+					NOP
+					NOP
+					NOP
+					BP2F	BO_PORT_OUT0,0				; - APnDP_BIT
+					BTSC	SFR_DATA_EXCH,0
+					INC		SFR_INDIR_ADDR,F
+					BC		SFR_PORT_IO,SB_PORT_OUT1
+					ADD		SFR_PRG_COUNT,F				; skip cycles as inline delay
+					NOP
+					NOP
+					NOP
+					NOP
+					NOP
+					NOP
+					NOP
+					NOP
+					NOP
+					NOP
+					BS		SFR_PORT_IO,SB_PORT_OUT1
+					ADD		SFR_PRG_COUNT,F				; skip cycles as inline delay
+					NOP
+					NOP
+					NOP
+					NOP
+					NOP
+					NOP
+					NOP
+					NOP
+					NOP
+					NOP
+					BP2F	BO_PORT_OUT0,1				; - RnW_BIT
+					BTSC	SFR_DATA_EXCH,1
+					INC		SFR_INDIR_ADDR,F
+					BC		SFR_PORT_IO,SB_PORT_OUT1
+					ADD		SFR_PRG_COUNT,F				; skip cycles as inline delay
+					NOP
+					NOP
+					NOP
+					NOP
+					NOP
+					NOP
+					NOP
+					NOP
+					NOP
+					NOP
+					BS		SFR_PORT_IO,SB_PORT_OUT1
+					ADD		SFR_PRG_COUNT,F				; skip cycles as inline delay
+					NOP
+					NOP
+					NOP
+					NOP
+					NOP
+					NOP
+					NOP
+					NOP
+					NOP
+					NOP
+					BP2F	BO_PORT_OUT0,2				; - A2_BIT
+					BTSC	SFR_DATA_EXCH,2
+					INC		SFR_INDIR_ADDR,F
+					BC		SFR_PORT_IO,SB_PORT_OUT1
+					ADD		SFR_PRG_COUNT,F				; skip cycles as inline delay
+					NOP
+					NOP
+					NOP
+					NOP
+					NOP
+					NOP
+					NOP
+					NOP
+					NOP
+					NOP
+					BS		SFR_PORT_IO,SB_PORT_OUT1
+					ADD		SFR_PRG_COUNT,F				; skip cycles as inline delay
+					NOP
+					NOP
+					NOP
+					NOP
+					NOP
+					NOP
+					NOP
+					NOP
+					NOP
+					NOP
+					BP2F	BO_PORT_OUT0,3				; - A3_BIT
+					BTSC	SFR_DATA_EXCH,3
+					INC		SFR_INDIR_ADDR,F
+					BC		SFR_PORT_IO,SB_PORT_OUT1
+					ADD		SFR_PRG_COUNT,F				; skip cycles as inline delay
+					NOP
+					NOP
+					NOP
+					NOP
+					NOP
+					NOP
+					NOP
+					NOP
+					NOP
+					NOP
+					BS		SFR_PORT_IO,SB_PORT_OUT1
+					ADD		SFR_PRG_COUNT,F				; skip cycles as inline delay
+					NOP
+					NOP
+					NOP
+					NOP
+					NOP
+					NOP
+					NOP
+					NOP
+					NOP
+					NOP
+					BP1F	BO_PORT_OUT0,0				; - Parity Bit
+					BC		SFR_PORT_IO,SB_PORT_OUT1
+					ADD		SFR_PRG_COUNT,F				; skip cycles as inline delay
+					NOP
+					NOP
+					NOP
+					NOP
+					NOP
+					NOP
+					NOP
+					NOP
+					NOP
+					NOP
+					BS		SFR_PORT_IO,SB_PORT_OUT1
+					ADD		SFR_PRG_COUNT,F				; skip cycles as inline delay
+					NOP
+					NOP
+					NOP
+					NOP
+					NOP
+					NOP
+					NOP
+					NOP
+					NOP
+					NOP
+					BC		SFR_PORT_IO,SB_PORT_OUT0	; - STOP_BIT(0)
+					BC		SFR_PORT_IO,SB_PORT_OUT1
+					ADD		SFR_PRG_COUNT,F				; skip cycles as inline delay
+					NOP
+					NOP
+					NOP
+					NOP
+					NOP
+					NOP
+					NOP
+					NOP
+					NOP
+					NOP
+					BS		SFR_PORT_IO,SB_PORT_OUT1
+					ADD		SFR_PRG_COUNT,F				; skip cycles as inline delay
+					NOP
+					NOP
+					NOP
+					NOP
+					NOP
+					NOP
+					NOP
+					NOP
+					NOP
+					NOP
+					BS		SFR_PORT_IO,SB_PORT_OUT0	; - PARK_BIT(1)
+					BC		SFR_PORT_IO,SB_PORT_OUT1
+					ADD		SFR_PRG_COUNT,F				; skip cycles as inline delay
+					NOP
+					NOP
+					NOP
+					NOP
+					NOP
+					NOP
+					NOP
+					NOP
+					NOP
+					NOP
+					BS		SFR_PORT_IO,SB_PORT_OUT1
 					RET
 ;
 ; ================
@@ -136,58 +331,218 @@ DAP_PACKREQ:
 					BS		SFR_PORT_IO,SB_PORT_OUT1
 					CALL	DELAY_L2
 					RET
-;
 ; ================
-; DAP PACKET_REQUEST, without additional delay
-; TAKES: SFR_DATA_EXCH as request
-; BREAKS: A, Z, SFR_DATA_EXCH, SFR_INDIR_ADDR
-DAP_PACKREQ_FAST:		
-					BS		SFR_PORT_IO,SB_PORT_OUT0	; - START_BIT(1)
+; DAP read 8-bit data from SWDIO, with short delay
+; BREAKS: A, SFR_INDIR_ADDR, SFR_DATA_EXCH
+DAP_READ8_FAST:		MOV		PIOC_CMD_CODE,A
+					ANDL	0B00001111					; extract skip cycle
+;					MOVL	0x0A
+					CMPL	10
+					JC		DAP_READ8_EXFAST
 					BC		SFR_PORT_IO,SB_PORT_OUT1
+					ADD		SFR_PRG_COUNT,F				; skip cycles as inline delay
 					NOP
-					BS		SFR_PORT_IO,SB_PORT_OUT1
 					NOP
-					BP2F	BO_PORT_OUT0,0				; - APnDP_BIT
+					NOP
+					NOP
+					NOP
+					NOP
+					NOP
+					NOP
+					NOP
+					NOP
+					BG2F	BI_PORT_IN0,0
 					BTSC	SFR_DATA_EXCH,0
 					INC		SFR_INDIR_ADDR,F
-					BC		SFR_PORT_IO,SB_PORT_OUT1
-					NOP
 					BS		SFR_PORT_IO,SB_PORT_OUT1
+					ADD		SFR_PRG_COUNT,F				; skip cycles as inline delay
 					NOP
-					BP2F	BO_PORT_OUT0,1				; - RnW_BIT
+					NOP
+					NOP
+					NOP
+					NOP
+					NOP
+					NOP
+					NOP
+					NOP
+					NOP
+					BC		SFR_PORT_IO,SB_PORT_OUT1
+					ADD		SFR_PRG_COUNT,F				; skip cycles as inline delay
+					NOP
+					NOP
+					NOP
+					NOP
+					NOP
+					NOP
+					NOP
+					NOP
+					NOP
+					NOP
+					BG2F	BI_PORT_IN0,1
 					BTSC	SFR_DATA_EXCH,1
 					INC		SFR_INDIR_ADDR,F
-					BC		SFR_PORT_IO,SB_PORT_OUT1
-					NOP
 					BS		SFR_PORT_IO,SB_PORT_OUT1
+					ADD		SFR_PRG_COUNT,F				; skip cycles as inline delay
 					NOP
-					BP2F	BO_PORT_OUT0,2				; - A2_BIT
+					NOP
+					NOP
+					NOP
+					NOP
+					NOP
+					NOP
+					NOP
+					NOP
+					NOP
+					BC		SFR_PORT_IO,SB_PORT_OUT1
+					ADD		SFR_PRG_COUNT,F				; skip cycles as inline delay
+					NOP
+					NOP
+					NOP
+					NOP
+					NOP
+					NOP
+					NOP
+					NOP
+					NOP
+					NOP
+					BG2F	BI_PORT_IN0,2
 					BTSC	SFR_DATA_EXCH,2
 					INC		SFR_INDIR_ADDR,F
-					BC		SFR_PORT_IO,SB_PORT_OUT1
-					NOP
 					BS		SFR_PORT_IO,SB_PORT_OUT1
+					ADD		SFR_PRG_COUNT,F				; skip cycles as inline delay
 					NOP
-					BP2F	BO_PORT_OUT0,3				; - A3_BIT
+					NOP
+					NOP
+					NOP
+					NOP
+					NOP
+					NOP
+					NOP
+					NOP
+					NOP
+					BC		SFR_PORT_IO,SB_PORT_OUT1
+					ADD		SFR_PRG_COUNT,F				; skip cycles as inline delay
+					NOP
+					NOP
+					NOP
+					NOP
+					NOP
+					NOP
+					NOP
+					NOP
+					NOP
+					NOP
+					BG2F	BI_PORT_IN0,3
 					BTSC	SFR_DATA_EXCH,3
 					INC		SFR_INDIR_ADDR,F
-					BC		SFR_PORT_IO,SB_PORT_OUT1
-					NOP
 					BS		SFR_PORT_IO,SB_PORT_OUT1
+					ADD		SFR_PRG_COUNT,F				; skip cycles as inline delay
 					NOP
-					BP1F	BO_PORT_OUT0,0				; - Parity Bit
+					NOP
+					NOP
+					NOP
+					NOP
+					NOP
+					NOP
+					NOP
+					NOP
+					NOP
 					BC		SFR_PORT_IO,SB_PORT_OUT1
+					ADD		SFR_PRG_COUNT,F				; skip cycles as inline delay
 					NOP
+					NOP
+					NOP
+					NOP
+					NOP
+					NOP
+					NOP
+					NOP
+					NOP
+					NOP
+					BG2F	BI_PORT_IN0,4
+					BTSC	SFR_DATA_EXCH,4
+					INC		SFR_INDIR_ADDR,F
 					BS		SFR_PORT_IO,SB_PORT_OUT1
+					ADD		SFR_PRG_COUNT,F				; skip cycles as inline delay
 					NOP
-					BC		SFR_PORT_IO,SB_PORT_OUT0	; - STOP_BIT(0)
+					NOP
+					NOP
+					NOP
+					NOP
+					NOP
+					NOP
+					NOP
+					NOP
+					NOP
 					BC		SFR_PORT_IO,SB_PORT_OUT1
+					ADD		SFR_PRG_COUNT,F				; skip cycles as inline delay
 					NOP
+					NOP
+					NOP
+					NOP
+					NOP
+					NOP
+					NOP
+					NOP
+					NOP
+					NOP
+					BG2F	BI_PORT_IN0,5
+					BTSC	SFR_DATA_EXCH,5
+					INC		SFR_INDIR_ADDR,F
 					BS		SFR_PORT_IO,SB_PORT_OUT1
+					ADD		SFR_PRG_COUNT,F				; skip cycles as inline delay
 					NOP
-					BS		SFR_PORT_IO,SB_PORT_OUT0	; - PARK_BIT(1)
+					NOP
+					NOP
+					NOP
+					NOP
+					NOP
+					NOP
+					NOP
+					NOP
+					NOP
 					BC		SFR_PORT_IO,SB_PORT_OUT1
+					ADD		SFR_PRG_COUNT,F				; skip cycles as inline delay
 					NOP
+					NOP
+					NOP
+					NOP
+					NOP
+					NOP
+					NOP
+					NOP
+					NOP
+					NOP
+					BG2F	BI_PORT_IN0,6
+					BTSC	SFR_DATA_EXCH,6
+					INC		SFR_INDIR_ADDR,F
+					BS		SFR_PORT_IO,SB_PORT_OUT1
+					ADD		SFR_PRG_COUNT,F				; skip cycles as inline delay
+					NOP
+					NOP
+					NOP
+					NOP
+					NOP
+					NOP
+					NOP
+					NOP
+					NOP
+					NOP
+					BC		SFR_PORT_IO,SB_PORT_OUT1
+					ADD		SFR_PRG_COUNT,F				; skip cycles as inline delay
+					NOP
+					NOP
+					NOP
+					NOP
+					NOP
+					NOP
+					NOP
+					NOP
+					NOP
+					NOP
+					BG2F	BI_PORT_IN0,7
+					BTSC	SFR_DATA_EXCH,7
+					INC		SFR_INDIR_ADDR,F
 					BS		SFR_PORT_IO,SB_PORT_OUT1
 					RET
 ;
@@ -253,62 +608,218 @@ DAP_READ8:			BC		SFR_PORT_IO,SB_PORT_OUT1
 					RET
 ;
 ; ================
-; DAP read 8-bit data from SWDIO, without additional delay
-; BREAKS: A, SFR_INDIR_ADDR, SFR_DATA_EXCH
-DAP_READ8_FAST:		BC		SFR_PORT_IO,SB_PORT_OUT1
-					NOP		; Fast delay
-					BG2F	BI_PORT_IN0,0
+; DAP write 8-bit data to SWDIO, with short delay
+; TAKES: SFR_DATA_EXCH as data
+; BREAKS: A, SFR_INDIR_ADDR
+DAP_WRITE8_FAST:	MOV		PIOC_CMD_CODE,A
+					ANDL	0B00001111					; extract skip cycle
+;					MOVL	0x0A
+					CMPL	10
+					JC		DAP_WRITE8_EXFAST
+					BP2F	BO_PORT_OUT0,0
 					BTSC	SFR_DATA_EXCH,0
 					INC		SFR_INDIR_ADDR,F
-					BS		SFR_PORT_IO,SB_PORT_OUT1
-					NOP
 					BC		SFR_PORT_IO,SB_PORT_OUT1
+					ADD		SFR_PRG_COUNT,F				; skip cycles as inline delay
 					NOP
-					BG2F	BI_PORT_IN0,1
+					NOP
+					NOP
+					NOP
+					NOP
+					NOP
+					NOP
+					NOP
+					NOP
+					NOP		
+					BS		SFR_PORT_IO,SB_PORT_OUT1
+					ADD		SFR_PRG_COUNT,F				; skip cycles as inline delay
+					NOP
+					NOP
+					NOP
+					NOP
+					NOP
+					NOP
+					NOP
+					NOP
+					NOP
+					NOP
+					BP2F	BO_PORT_OUT0,1
 					BTSC	SFR_DATA_EXCH,1
 					INC		SFR_INDIR_ADDR,F
-					BS		SFR_PORT_IO,SB_PORT_OUT1
-					NOP
 					BC		SFR_PORT_IO,SB_PORT_OUT1
+					ADD		SFR_PRG_COUNT,F				; skip cycles as inline delay
 					NOP
-					BG2F	BI_PORT_IN0,2
+					NOP
+					NOP
+					NOP
+					NOP
+					NOP
+					NOP
+					NOP
+					NOP
+					NOP				
+					BS		SFR_PORT_IO,SB_PORT_OUT1
+					ADD		SFR_PRG_COUNT,F				; skip cycles as inline delay
+					NOP
+					NOP
+					NOP
+					NOP
+					NOP
+					NOP
+					NOP
+					NOP
+					NOP
+					NOP
+					BP2F	BO_PORT_OUT0,2
 					BTSC	SFR_DATA_EXCH,2
 					INC		SFR_INDIR_ADDR,F
-					BS		SFR_PORT_IO,SB_PORT_OUT1
-					NOP
 					BC		SFR_PORT_IO,SB_PORT_OUT1
+					ADD		SFR_PRG_COUNT,F				; skip cycles as inline delay
 					NOP
-					BG2F	BI_PORT_IN0,3
+					NOP
+					NOP
+					NOP
+					NOP
+					NOP
+					NOP
+					NOP
+					NOP
+					NOP				
+					BS		SFR_PORT_IO,SB_PORT_OUT1
+					ADD		SFR_PRG_COUNT,F				; skip cycles as inline delay
+					NOP
+					NOP
+					NOP
+					NOP
+					NOP
+					NOP
+					NOP
+					NOP
+					NOP
+					NOP
+					BP2F	BO_PORT_OUT0,3
 					BTSC	SFR_DATA_EXCH,3
 					INC		SFR_INDIR_ADDR,F
-					BS		SFR_PORT_IO,SB_PORT_OUT1
-					NOP
 					BC		SFR_PORT_IO,SB_PORT_OUT1
+					ADD		SFR_PRG_COUNT,F				; skip cycles as inline delay
 					NOP
-					BG2F	BI_PORT_IN0,4
+					NOP
+					NOP
+					NOP
+					NOP
+					NOP
+					NOP
+					NOP
+					NOP
+					NOP			
+					BS		SFR_PORT_IO,SB_PORT_OUT1
+					ADD		SFR_PRG_COUNT,F				; skip cycles as inline delay
+					NOP
+					NOP
+					NOP
+					NOP
+					NOP
+					NOP
+					NOP
+					NOP
+					NOP
+					NOP
+					BP2F	BO_PORT_OUT0,4
 					BTSC	SFR_DATA_EXCH,4
 					INC		SFR_INDIR_ADDR,F
-					BS		SFR_PORT_IO,SB_PORT_OUT1
-					NOP
 					BC		SFR_PORT_IO,SB_PORT_OUT1
+					ADD		SFR_PRG_COUNT,F				; skip cycles as inline delay
 					NOP
-					BG2F	BI_PORT_IN0,5
+					NOP
+					NOP
+					NOP
+					NOP
+					NOP
+					NOP
+					NOP
+					NOP
+					NOP				
+					BS		SFR_PORT_IO,SB_PORT_OUT1
+					ADD		SFR_PRG_COUNT,F				; skip cycles as inline delay
+					NOP
+					NOP
+					NOP
+					NOP
+					NOP
+					NOP
+					NOP
+					NOP
+					NOP
+					NOP
+					BP2F	BO_PORT_OUT0,5
 					BTSC	SFR_DATA_EXCH,5
 					INC		SFR_INDIR_ADDR,F
-					BS		SFR_PORT_IO,SB_PORT_OUT1
-					NOP
 					BC		SFR_PORT_IO,SB_PORT_OUT1
+					ADD		SFR_PRG_COUNT,F				; skip cycles as inline delay
 					NOP
-					BG2F	BI_PORT_IN0,6
+					NOP
+					NOP
+					NOP
+					NOP
+					NOP
+					NOP
+					NOP
+					NOP
+					NOP				
+					BS		SFR_PORT_IO,SB_PORT_OUT1
+					ADD		SFR_PRG_COUNT,F				; skip cycles as inline delay
+					NOP
+					NOP
+					NOP
+					NOP
+					NOP
+					NOP
+					NOP
+					NOP
+					NOP
+					NOP
+					BP2F	BO_PORT_OUT0,6
 					BTSC	SFR_DATA_EXCH,6
 					INC		SFR_INDIR_ADDR,F
-					BS		SFR_PORT_IO,SB_PORT_OUT1
-					NOP
 					BC		SFR_PORT_IO,SB_PORT_OUT1
+					ADD		SFR_PRG_COUNT,F				; skip cycles as inline delay
 					NOP
-					BG2F	BI_PORT_IN0,7
+					NOP
+					NOP
+					NOP
+					NOP
+					NOP
+					NOP
+					NOP
+					NOP
+					NOP			
+					BS		SFR_PORT_IO,SB_PORT_OUT1
+					ADD		SFR_PRG_COUNT,F				; skip cycles as inline delay
+					NOP
+					NOP
+					NOP
+					NOP
+					NOP
+					NOP
+					NOP
+					NOP
+					NOP
+					NOP
+					BP2F	BO_PORT_OUT0,7
 					BTSC	SFR_DATA_EXCH,7
 					INC		SFR_INDIR_ADDR,F
+					BC		SFR_PORT_IO,SB_PORT_OUT1
+					ADD		SFR_PRG_COUNT,F				; skip cycles as inline delay
+					NOP
+					NOP
+					NOP
+					NOP
+					NOP
+					NOP
+					NOP
+					NOP
+					NOP
+					NOP				
 					BS		SFR_PORT_IO,SB_PORT_OUT1
 					RET
 ;
@@ -375,10 +886,125 @@ DAP_WRITE8:			BP2F	BO_PORT_OUT0,0
 					RET
 ;
 ; ================
+; DAP PACKET_REQUEST, without additional delay
+; TAKES: SFR_DATA_EXCH as request
+; BREAKS: A, Z, SFR_DATA_EXCH, SFR_INDIR_ADDR
+DAP_PACKREQ_EXFAST:		
+					BS		SFR_PORT_IO,SB_PORT_OUT0	; - START_BIT(1)
+					BC		SFR_PORT_IO,SB_PORT_OUT1
+					NOP
+					BS		SFR_PORT_IO,SB_PORT_OUT1
+					NOP
+					BP2F	BO_PORT_OUT0,0				; - APnDP_BIT
+					BTSC	SFR_DATA_EXCH,0
+					INC		SFR_INDIR_ADDR,F
+					BC		SFR_PORT_IO,SB_PORT_OUT1
+					NOP
+					BS		SFR_PORT_IO,SB_PORT_OUT1
+					NOP
+					BP2F	BO_PORT_OUT0,1				; - RnW_BIT
+					BTSC	SFR_DATA_EXCH,1
+					INC		SFR_INDIR_ADDR,F
+					BC		SFR_PORT_IO,SB_PORT_OUT1
+					NOP
+					BS		SFR_PORT_IO,SB_PORT_OUT1
+					NOP
+					BP2F	BO_PORT_OUT0,2				; - A2_BIT
+					BTSC	SFR_DATA_EXCH,2
+					INC		SFR_INDIR_ADDR,F
+					BC		SFR_PORT_IO,SB_PORT_OUT1
+					NOP
+					BS		SFR_PORT_IO,SB_PORT_OUT1
+					NOP
+					BP2F	BO_PORT_OUT0,3				; - A3_BIT
+					BTSC	SFR_DATA_EXCH,3
+					INC		SFR_INDIR_ADDR,F
+					BC		SFR_PORT_IO,SB_PORT_OUT1
+					NOP
+					BS		SFR_PORT_IO,SB_PORT_OUT1
+					NOP
+					BP1F	BO_PORT_OUT0,0				; - Parity Bit
+					BC		SFR_PORT_IO,SB_PORT_OUT1
+					NOP
+					BS		SFR_PORT_IO,SB_PORT_OUT1
+					NOP
+					BC		SFR_PORT_IO,SB_PORT_OUT0	; - STOP_BIT(0)
+					BC		SFR_PORT_IO,SB_PORT_OUT1
+					NOP
+					BS		SFR_PORT_IO,SB_PORT_OUT1
+					NOP
+					BS		SFR_PORT_IO,SB_PORT_OUT0	; - PARK_BIT(1)
+					BC		SFR_PORT_IO,SB_PORT_OUT1
+					NOP
+					BS		SFR_PORT_IO,SB_PORT_OUT1
+					RET
+;
+;
+; ================
+; DAP read 8-bit data from SWDIO, without additional delay
+; BREAKS: A, SFR_INDIR_ADDR, SFR_DATA_EXCH
+DAP_READ8_EXFAST:		BC		SFR_PORT_IO,SB_PORT_OUT1
+					NOP		; Fast delay
+					BG2F	BI_PORT_IN0,0
+					BTSC	SFR_DATA_EXCH,0
+					INC		SFR_INDIR_ADDR,F
+					BS		SFR_PORT_IO,SB_PORT_OUT1
+					NOP
+					BC		SFR_PORT_IO,SB_PORT_OUT1
+					NOP
+					BG2F	BI_PORT_IN0,1
+					BTSC	SFR_DATA_EXCH,1
+					INC		SFR_INDIR_ADDR,F
+					BS		SFR_PORT_IO,SB_PORT_OUT1
+					NOP
+					BC		SFR_PORT_IO,SB_PORT_OUT1
+					NOP
+					BG2F	BI_PORT_IN0,2
+					BTSC	SFR_DATA_EXCH,2
+					INC		SFR_INDIR_ADDR,F
+					BS		SFR_PORT_IO,SB_PORT_OUT1
+					NOP
+					BC		SFR_PORT_IO,SB_PORT_OUT1
+					NOP
+					BG2F	BI_PORT_IN0,3
+					BTSC	SFR_DATA_EXCH,3
+					INC		SFR_INDIR_ADDR,F
+					BS		SFR_PORT_IO,SB_PORT_OUT1
+					NOP
+					BC		SFR_PORT_IO,SB_PORT_OUT1
+					NOP
+					BG2F	BI_PORT_IN0,4
+					BTSC	SFR_DATA_EXCH,4
+					INC		SFR_INDIR_ADDR,F
+					BS		SFR_PORT_IO,SB_PORT_OUT1
+					NOP
+					BC		SFR_PORT_IO,SB_PORT_OUT1
+					NOP
+					BG2F	BI_PORT_IN0,5
+					BTSC	SFR_DATA_EXCH,5
+					INC		SFR_INDIR_ADDR,F
+					BS		SFR_PORT_IO,SB_PORT_OUT1
+					NOP
+					BC		SFR_PORT_IO,SB_PORT_OUT1
+					NOP
+					BG2F	BI_PORT_IN0,6
+					BTSC	SFR_DATA_EXCH,6
+					INC		SFR_INDIR_ADDR,F
+					BS		SFR_PORT_IO,SB_PORT_OUT1
+					NOP
+					BC		SFR_PORT_IO,SB_PORT_OUT1
+					NOP
+					BG2F	BI_PORT_IN0,7
+					BTSC	SFR_DATA_EXCH,7
+					INC		SFR_INDIR_ADDR,F
+					BS		SFR_PORT_IO,SB_PORT_OUT1
+					RET
+;
+; ================
 ; DAP write 8-bit data to SWDIO, without additional delay
 ; TAKES: SFR_DATA_EXCH as data
 ; BREAKS: A, SFR_INDIR_ADDR
-DAP_WRITE8_FAST:	BP2F	BO_PORT_OUT0,0
+DAP_WRITE8_EXFAST:	BP2F	BO_PORT_OUT0,0
 					BTSC	SFR_DATA_EXCH,0
 					INC		SFR_INDIR_ADDR,F
 					BC		SFR_PORT_IO,SB_PORT_OUT1
@@ -436,8 +1062,27 @@ DAP_WRITE8_FAST:	BP2F	BO_PORT_OUT0,0
 					RET
 ;
 ; ================
+; DAP turn around, just toggle SWDIO for n cycles. return if Z=1 before start
+; TAKES: A as loopCnt_n, Z as skipFlag
+; BREAKS: A, Z, SFR_DATA_EXCH
+DAP_TURN:			MOVA	SFR_DATA_EXCH
+					JNZ		DAP_TURN_1
+					RET
+DAP_TURN_1:			BC		SFR_PORT_IO,SB_PORT_OUT1
+					BTSS	PIOC_CMD_CODE,4
+					CALL	DELAY_L2
+					BS		SFR_PORT_IO,SB_PORT_OUT1
+					BTSS	PIOC_CMD_CODE,4
+					CALL	DELAY_L2
+					DECSZ	SFR_DATA_EXCH,F
+					JMP		DAP_TURN_1
+					RET
+;
+					ORG		0X0400
+;
+; ================
 ; DAP SWD_Transfer function, takes arguments
-;  - [U8B]fastFlag in PIOC_CMD_CODE[7]
+;  - [U8B]fastFlag in PIOC_CMD_CODE[4]
 ;  - [U8]request in DAP_CMD_ARGV
 ;  - [U32]data in DAP_DATA_D0-D3 (read/write)
 ; BREAKS: A, Z, C, SFR_DATA_EXCH, SFR_INDIR_ADDR
@@ -445,9 +1090,9 @@ DAP_SWD_TRAN:		MOV		DAP_CMD_ARGV,A
 					MOVA	SFR_DATA_EXCH
 					MOVA1F	0B00001111			; IO0(OPU), IO1(OPU)
 					CLR		SFR_INDIR_ADDR
-					BTSC	PIOC_CMD_CODE,7
+					BTSC	PIOC_CMD_CODE,4
 					CALL	DAP_PACKREQ_FAST
-					BTSS	PIOC_CMD_CODE,7
+					BTSS	PIOC_CMD_CODE,4
 					CALL 	DAP_PACKREQ
 ; - TURN
 					MOVA1F	0B00001110			; IO0(IPU), IO1(OPU)
@@ -457,27 +1102,27 @@ DAP_SWD_TRAN:		MOV		DAP_CMD_ARGV,A
 					CLR		SFR_DATA_EXCH
 
 					BC		SFR_PORT_IO,SB_PORT_OUT1
-					BTSS	PIOC_CMD_CODE,7
+					BTSS	PIOC_CMD_CODE,4
 					CALL	DELAY_L2
 					BG2F	BI_PORT_IN0,0
 					BS		SFR_PORT_IO,SB_PORT_OUT1
-					BTSS	PIOC_CMD_CODE,7
+					BTSS	PIOC_CMD_CODE,4
 					CALL	DELAY_L2
 
 					BC		SFR_PORT_IO,SB_PORT_OUT1
-					BTSS	PIOC_CMD_CODE,7
+					BTSS	PIOC_CMD_CODE,4
 					CALL	DELAY_L2
 					BG2F	BI_PORT_IN0,1
 					BS		SFR_PORT_IO,SB_PORT_OUT1
-					BTSS	PIOC_CMD_CODE,7
+					BTSS	PIOC_CMD_CODE,4
 					CALL	DELAY_L2
 
 					BC		SFR_PORT_IO,SB_PORT_OUT1
-					BTSS	PIOC_CMD_CODE,7
+					BTSS	PIOC_CMD_CODE,4
 					CALL	DELAY_L2
 					BG2F	BI_PORT_IN0,2
 					BS		SFR_PORT_IO,SB_PORT_OUT1
-					BTSS	PIOC_CMD_CODE,7
+					BTSS	PIOC_CMD_CODE,4
 					CALL	DELAY_L2
 					MOV		SFR_DATA_EXCH,A		; Save ACK in DAP_CMD_RESP
 					MOVA	DAP_CMD_RESP
@@ -500,7 +1145,7 @@ DAP_SWD_TRAN_OK:	BTSS	DAP_CMD_ARGV,1
 					JMP		DAP_SWD_TRAN_OK_W
 ; - Read data
 					CLR		SFR_INDIR_ADDR
-					BTSS	PIOC_CMD_CODE,7
+					BTSS	PIOC_CMD_CODE,4
 					JMP		DAP_SWD_TOK_RN
 					JMP		DAP_SWD_TOK_RF
 DAP_SWD_TOK_RF:		CALL	DAP_READ8_FAST		; Read fast
@@ -530,11 +1175,11 @@ DAP_SWD_TOK_RN:		CALL	DAP_READ8			; Read normal
 					MOVA	DAP_DATA_D3
 DAP_SWD_TOK_RP:		CLR		SFR_DATA_EXCH		; - Read parity
 					BC		SFR_PORT_IO,SB_PORT_OUT1
-					BTSS	PIOC_CMD_CODE,7
+					BTSS	PIOC_CMD_CODE,4
 					CALL	DELAY_L2
 					BG2F	BI_PORT_IN0,0
 					BS		SFR_PORT_IO,SB_PORT_OUT1
-					BTSS	PIOC_CMD_CODE,7
+					BTSS	PIOC_CMD_CODE,4
 					CALL	DELAY_L2
 					MOV		SFR_INDIR_ADDR,A	; - Check parity
 					ANDL	0X01
@@ -549,9 +1194,11 @@ DAP_SWD_TRAN_OK_R1:	MOV		DAP_TURN_CYCLE,A
 ; - Write data
 DAP_SWD_TRAN_OK_W:	MOV		DAP_TURN_CYCLE,A
 					CALL	DAP_TURN
+					BTSS	DAP_DATA_D0,0		; [DEBUG] Preload 1st bit
+					BC 		SFR_PORT_IO,SB_PORT_OUT0
 					MOVA1F	0B00001111			; IO0(OPU), IO1(OPU)
 					CLR		SFR_INDIR_ADDR
-					BTSS	PIOC_CMD_CODE,7
+					BTSS	PIOC_CMD_CODE,4
 					JMP		DAP_SWD_TOK_WN
 					JMP		DAP_SWD_TOK_WF
 DAP_SWD_TOK_WF:		MOV		DAP_DATA_D0,A		; Write fast
@@ -581,10 +1228,10 @@ DAP_SWD_TOK_WN:		MOV		DAP_DATA_D0,A		; Write normal
 					CALL	DAP_WRITE8
 DAP_SWD_TOK_WP:		BP1F	BO_PORT_OUT0,0		; - Send parity
 					BC		SFR_PORT_IO,SB_PORT_OUT1
-					BTSS	PIOC_CMD_CODE,7
+					BTSS	PIOC_CMD_CODE,4
 					CALL	DELAY_L2
 					BS		SFR_PORT_IO,SB_PORT_OUT1
-					BTSS	PIOC_CMD_CODE,7
+					BTSS	PIOC_CMD_CODE,4
 					CALL	DELAY_L2
 ; - Capture TS
 DAP_SWD_TRAN_OK_TS:	BTSC	DAP_CMD_ARGV,7
@@ -594,7 +1241,9 @@ DAP_SWD_TRAN_OK_TS:	BTSC	DAP_CMD_ARGV,7
 					JZ		DAP_SWD_TRAN_OK_E
 					BC		SFR_PORT_IO,SB_PORT_OUT0
 					CALL	DAP_TURN
+					NOP
 DAP_SWD_TRAN_OK_E:	BS		SFR_PORT_IO,SB_PORT_OUT0
+					NOP
 					JMP		PIOC_WAIT_HOST
 ;
 ; - DAP_WAIT/FAULT:
@@ -618,7 +1267,9 @@ DAP_SWD_TRAN_NO_1:	MOV		DAP_TURN_CYCLE,A
 					MOVL	33
 					ANDL	0XFF				; force Z=0
 					CALL	DAP_TURN
+					NOP
 DAP_SWD_TRAN_NO_E:	BS		SFR_PORT_IO,SB_PORT_OUT0
+					NOP
 					JMP		PIOC_WAIT_HOST
 ;
 ; ================
@@ -636,17 +1287,11 @@ DAP_SWJ_SEQ:		NOP
 PIOC_INIT:			MOVA2F	0B00000011			; IO0=1, IO1=1
 					MOVA1F	0B00001111			; IO0(OPU), IO1(OPU)
 PIOC_INIT_1:		WAITB	WB_DATA_MW_SR_1
-; Load initial IO state
-;					MOV		PIOC_CMD_CODE,A
-;					MOVA	SFR_INDIR_ADDR
-;					BP1F	BO_PORT_OUT0,2
-;					BP1F	BO_PORT_OUT1,0
 					MOV		DAP_CMD_TYPE,A
-					XORL	0X01
+					CMPL	0X01
 					JZ		DAP_SWD_TRAN
-					MOV		DAP_CMD_TYPE,A
-					XORL	0X02
-					JZ		DAP_SWJ_SEQ
+;					CMPL	0X02
+;					JZ		DAP_SWJ_SEQ
 					JMP		PIOC_INIT_1
 ;
 PIOC_WAIT_HOST:		MOV		DAP_CMD_RESP,A
@@ -661,7 +1306,7 @@ WLP:				JMP		WLP
 ; ================
 ; Reserved space for data input(32 Bytes)
 ;
-					ORG		0X0400
+					ORG		0X0600
 					DW		0X0000
 					DW		0X0000
 					DW		0X0000

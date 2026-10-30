@@ -54,9 +54,34 @@
 #define __WEAK __attribute__ ((weak))
 #define __ASM __asm
 
+// If not defined in project configuration, set USE_PIOC_ACC to 0 (disabled) by default.
+#ifndef USE_PIOC_ACC
+#define USE_PIOC_ACC 0
+#endif
+
+// CH32X035 only provides GPIO_Speed_50MHz, so this is the sole valid setting.
+// Kept as a macro so the SWD pin drive strength can be tuned on a derived design.
+#ifndef SWD_IO_DRV_SPEED
+#define SWD_IO_DRV_SPEED GPIO_Speed_50MHz
+#endif
+
 /// Processor Clock of the Cortex-M MCU used in the Debug Unit.
 /// This value is used to calculate the SWD/JTAG clock speed.
 #define CPU_CLOCK 48000000U  ///< Specifies the CPU Clock in Hz.
+
+/// Enable the PIOC (programmable I/O controller) SWD accelerator.
+/// Normally supplied by the build system (-DUSE_PIOC_ACC=1); defaulted here so the
+/// project also compiles standalone when the macro is missing.
+#ifndef USE_PIOC_ACC
+#define USE_PIOC_ACC 0
+#endif
+
+/// Output driver speed for the SWD/JTAG pins (slew rate control).
+/// Lower it (e.g. GPIO_Speed_10MHz) on long/loaded SWD cables to reduce ringing;
+/// CH32X035 only provides GPIO_Speed_50MHz in the SPL, so that is the default.
+#ifndef SWD_IO_DRV_SPEED
+#define SWD_IO_DRV_SPEED GPIO_Speed_50MHz
+#endif
 
 /// Number of processor cycles for I/O Port write operations.
 /// This value is used to calculate the SWD/JTAG clock speed that is generated with I/O
@@ -97,11 +122,7 @@
 /// This configuration settings is used to optimize the communication performance with the
 /// debugger and depends on the USB peripheral. For devices with limited RAM or USB buffer the
 /// setting can be reduced (valid range is 1 .. 255).
-#if (USE_PIOC_ACC)
 #define DAP_PACKET_COUNT 20U  ///< Specifies number of packets buffered.
-#else
-#define DAP_PACKET_COUNT 12U  ///< Specifies number of packets buffered.
-#endif
 
 /// Indicate that UART Serial Wire Output (SWO) trace is available.
 /// This information is returned by the command \ref DAP_Info as part of <b>Capabilities</b>.
@@ -330,14 +351,14 @@ __STATIC_INLINE void PORT_SWD_SETUP (void) {
     GPIO_InitTypeDef GPIO_InitStructure = {0};
     GPIO_InitStructure.GPIO_Pin = GPIO_Pin_4 | GPIO_Pin_5 | GPIO_Pin_7;
     GPIO_InitStructure.GPIO_Mode = GPIO_Mode_Out_PP;
-    GPIO_InitStructure.GPIO_Speed = GPIO_Speed_50MHz;
+    GPIO_InitStructure.GPIO_Speed = SWD_IO_DRV_SPEED;
     GPIO_Init (GPIOA, &GPIO_InitStructure);
     GPIO_InitStructure.GPIO_Pin = GPIO_Pin_6;
     GPIO_InitStructure.GPIO_Mode = GPIO_Mode_IPU;
     GPIO_Init (GPIOA, &GPIO_InitStructure);
     GPIO_InitStructure.GPIO_Pin = GPIO_Pin_18 | GPIO_Pin_19;
     GPIO_InitStructure.GPIO_Mode = GPIO_Mode_IPU;
-    GPIO_InitStructure.GPIO_Speed = GPIO_Speed_50MHz;
+    GPIO_InitStructure.GPIO_Speed = SWD_IO_DRV_SPEED;
     GPIO_Init (GPIOC, &GPIO_InitStructure);
 }
 

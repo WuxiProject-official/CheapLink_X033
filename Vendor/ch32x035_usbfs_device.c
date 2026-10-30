@@ -14,6 +14,16 @@
 
 #include "usbqueue.h"
 
+// FreeRTOS is needed by USBFS_Device_Init(): see the Delay_Us() guard there.
+#include "FreeRTOS.h"
+#include "task.h"
+
+extern TaskHandle_t taskHandleDAP;
+#if DAP_WITH_CDC
+extern TaskHandle_t taskHandleSER;
+#endif
+extern TaskHandle_t taskHandleLED;
+
 // 为确保宏定义生效，请在全局宏定义中设置MSOS_DESC和DAP_WITH_CDC的值。
 
 /*******************************************************************************/
@@ -44,6 +54,63 @@ volatile uint8_t USBFS_Endp_Busy[DEF_UEP_NUM];
 /* Interrupt Service Routine Declaration*/
 void USBFS_IRQHandler (void)  __attribute__((interrupt()));// __attribute__ ((section (".highcode")));
 
+/* Endpoint HALT (stall) bitmap.  HALT is protocol-stack state:
+ * bit index = endpoint number, +16 when the direction is IN, matching the
+ * direction bit (bit7) of the endpoint address.
+ *   bit0..15  = OUT EP0..15
+ *   bit16..31 = IN  EP0..15
+ * Bits are only set/cleared inside the USB interrupt (SET/CLEAR_FEATURE are
+ * handled in the EP0 interrupt context), so task side only reads it. */
+static volatile uint32_t USBFS_EPHaltBitmap = 0;
+
+#define USBFS_EPHALT_BIT(ep)  (1UL << (((ep) & 0x0F) + ((((ep) & DEF_UEP_IN) != 0) ? 16 : 0)))
+
+uint8_t USBFS_IsEPHalted (uint8_t ep) {
+    return (USBFS_EPHaltBitmap & USBFS_EPHALT_BIT(ep)) ? 1U : 0U;
+}
+
+/*********************************************************************
+ * @fn      USBFS_SetEPHalt
+ *
+ * @brief   Apply the host's SET/CLEAR_FEATURE(ENDPOINT_HALT) to one endpoint.
+ *          The endpoint register and the HALT bit are updated first, then the
+ *          queue layer is notified so it can invalidate the whole pipeline.
+ *
+ * @param   halted - 0 = CLEAR_FEATURE, non-zero = SET_FEATURE
+ * @param   ep     - endpoint address, DEF_UEPn | DEF_UEP_IN / DEF_UEP_OUT
+ *
+ * @return  none
+ */
+static void USBFS_SetEPHalt (uint8_t halted, uint8_t ep) {
+    volatile uint8_t *ctrl;
+    uint32_t resMask, resStall, resNak, bit;
+    switch (ep) {
+    case (DEF_UEP_OUT | DEF_UEP1):
+        ctrl = &USBFSD->UEP1_CTRL_H, resMask = USBFS_UEP_R_RES_MASK;
+        resStall = USBFS_UEP_R_RES_STALL, resNak = USBFS_UEP_R_RES_NAK;
+        break;
+    case (DEF_UEP_IN | DEF_UEP2):
+        ctrl = &USBFSD->UEP2_CTRL_H, resMask = USBFS_UEP_T_RES_MASK;
+        resStall = USBFS_UEP_T_RES_STALL, resNak = USBFS_UEP_T_RES_NAK;
+        break;
+    default:
+        /* CDC endpoints keep their original handling (see CLEAR/SET_FEATURE). */
+        return;
+    }
+    bit = USBFS_EPHALT_BIT (ep);
+    if (halted) {
+        USBFS_EPHaltBitmap |= bit;
+        // SET_FEATURE: stall the endpoint. Do not touch the data toggle.
+        *ctrl = (*ctrl & ~resMask) | resStall;
+    } else {
+        USBFS_EPHaltBitmap &= ~bit;
+        // CLEAR_FEATURE: whole-byte write => TOG back to DATA0, RES = NAK.
+        // The queue layer re-arms the endpoint after this callback returns.
+        *ctrl = resNak;
+    }
+    USBQueue_EpHalt_Handler (halted, ep);
+}
+
 /*********************************************************************
  * @fn      USBFS_RCC_Init
  *
@@ -71,6 +138,9 @@ extern int __attribute__ ((noinline)) CDCSerial_Init (uint8_t linecoding[8]);
  * @return  none
  */
 void USBFS_Device_Endp_Init (void) {
+
+    /* Endpoint HALT is protocol-stack state: a bus reset invalidates all of it. */
+    USBFS_EPHaltBitmap = 0;
 
     USBFSD->UEP4_1_MOD = USBFS_UEP1_RX_EN;
 #if DAP_WITH_CDC
@@ -141,11 +211,23 @@ void USBFS_Device_Init (FunctionalState sta, PWR_VDD VDD_Voltage) {
         USBFSD->INT_FG = 0xff;
         USBFSD->UDEV_CTRL = USBFS_UD_PD_DIS | USBFS_UD_PORT_EN;
         USBFSD->INT_EN = USBFS_UIE_SUSPEND | USBFS_UIE_BUS_RST | USBFS_UIE_TRANSFER;
-        NVIC_EnableIRQ (USBFS_IRQn);
+        /* Do NOT enable the USB interrupt here: the RTOS tasks (and therefore
+         * taskHandleDAP / taskHandleLED) may not exist yet, and xTaskNotifyFromISR()
+         * on a NULL handle is undefined behaviour.  The caller enables it once the
+         * queue is armed and the tasks are created. */
+        // NVIC_EnableIRQ (USBFS_IRQn);
     } else {
         AFIO->CTLR = AFIO->CTLR & ~(UDP_PUE_MASK | UDM_PUE_MASK | USB_IOEN);
         USBFSD->BASE_CTRL = USBFS_UC_RESET_SIE | USBFS_UC_CLR_ALL;
-        Delay_Us (10);
+        // Let the SIE reset settle.
+        // Delay_Us()/Delay_Ms() must NOT be used once the scheduler is running:
+        // they reprogram SysTick->CMP/CTLR and leave SysTick stopped (CTLR bit0
+        // cleared), which destroys the FreeRTOS tick. vTaskDelay() yields instead.
+        if (xTaskGetSchedulerState() == taskSCHEDULER_NOT_STARTED) {
+            Delay_Us (10);
+        } else {
+            vTaskDelay (pdMS_TO_TICKS (1));  // comfortably exceeds the 10 us settle time
+        }
         USBFSD->BASE_CTRL = 0x00;
         NVIC_DisableIRQ (USBFS_IRQn);
     }
@@ -190,14 +272,6 @@ uint8_t USBFS_Endp_DataUp (uint8_t endp, uint8_t *pbuf, uint16_t len,
     }
     return 0;
 }
-
-#include "FreeRTOS.h"
-#include "task.h"
-extern TaskHandle_t taskHandleDAP;
-#if DAP_WITH_CDC
-extern TaskHandle_t taskHandleSER;
-#endif
-extern TaskHandle_t taskHandleLED;
 
 /*********************************************************************
  * @fn      USBFS_IRQHandler
@@ -464,7 +538,9 @@ void USBFS_IRQHandler (void) {
                 case USB_SET_CONFIGURATION:
                     USBFS_DevConfig = (uint8_t)(USBFS_SetupReqValue & 0xFF);
                     USBFS_DevEnumStatus = 0x01;
-                    xTaskNotifyFromISR (taskHandleLED, 0x31, eSetValueWithOverwrite, NULL);  // LED: Yellow Still
+                    if (taskHandleLED) {
+                        xTaskNotifyFromISR (taskHandleLED, 0x31, eSetValueWithOverwrite, NULL);  // LED: Yellow Still
+                    }
                     break;
 
                     /* Clear or disable one usb feature */
@@ -480,13 +556,11 @@ void USBFS_IRQHandler (void) {
                         if ((uint8_t)(USBFS_SetupReqValue & 0xFF) == USB_REQ_FEAT_ENDP_HALT) {
                             switch ((uint8_t)(USBFS_SetupReqIndex & 0xFF)) {
                             case (DEF_UEP_IN | DEF_UEP2):
-                                /* Set End-point 2 IN NAK */
-                                USBFSD->UEP2_CTRL_H = USBFS_UEP_T_RES_NAK;
-                                break;
-
                             case (DEF_UEP_OUT | DEF_UEP1):
-                                /* Set End-point 1 OUT ACK */
-                                USBFSD->UEP1_CTRL_H = USBFS_UEP_R_RES_ACK;
+                                /* DAP pipe (EP1 OUT / EP2 IN): the protocol stack
+                                 * un-stalls the endpoint and the queue layer
+                                 * invalidates the whole pipe. */
+                                USBFS_SetEPHalt (0U, (uint8_t)(USBFS_SetupReqIndex & 0xFF));
                                 break;
 #if DAP_WITH_CDC
                             case (DEF_UEP_IN | DEF_UEP3):
@@ -532,14 +606,12 @@ void USBFS_IRQHandler (void) {
                             /* Set end-points status stall */
                             switch ((uint8_t)(USBFS_SetupReqIndex & 0xFF)) {
                             case (DEF_UEP_OUT | DEF_UEP1):
-                                /* Set End-point 1 OUT STALL */
-                                USBFSD->UEP1_CTRL_H = (USBFSD->UEP1_CTRL_H & ~USBFS_UEP_R_RES_MASK) | USBFS_UEP_R_RES_STALL;
+                            case (DEF_UEP_IN | DEF_UEP2):
+                                /* DAP pipe (EP1 OUT / EP2 IN): stall the endpoint
+                                 * and let the queue layer invalidate the pipe. */
+                                USBFS_SetEPHalt (1U, (uint8_t)(USBFS_SetupReqIndex & 0xFF));
                                 break;
 
-                            case (DEF_UEP_IN | DEF_UEP2):
-                                /* Set End-point 2 IN STALL */
-                                USBFSD->UEP2_CTRL_H = (USBFSD->UEP2_CTRL_H & ~USBFS_UEP_T_RES_MASK) | USBFS_UEP_T_RES_STALL;
-                                break;
 #if DAP_WITH_CDC
                             case (DEF_UEP_IN | DEF_UEP3):
                                 /* Set End-point 3 IN STALL */
@@ -667,23 +739,41 @@ void USBFS_IRQHandler (void) {
 
         USBFSD->DEV_ADDR = 0;
         USBFS_Device_Endp_Init();
+        /* The device stack just reset every endpoint register; the queue layer
+         * state (indices / idle flags) must be invalidated too, otherwise the
+         * first command after re-enumeration may be written into a slot that is
+         * logically already dequeued. */
+        USBQueue_StatusReset();
+        USBFSD->UEP1_CTRL_H = USBFS_UEP_R_RES_ACK;  // Explicitly re-arm EP1 OUT
         USBFSD->INT_FG = USBFS_UIF_BUS_RST;
-        // Notify tasks
-        xTaskNotifyFromISR (taskHandleDAP, 0x00010000UL, eSetBits, &taskWoken);
+        // Notify tasks (handles are NULL until the scheduler has created them)
+        if (taskHandleDAP) {
+            xTaskNotifyFromISR (taskHandleDAP, 0x00010000UL, eSetBits, &taskWoken);
+        }
 #if DAP_WITH_CDC
-        xTaskNotifyFromISR (taskHandleSER, 0x00010000UL, eSetBits, &taskWoken);
+        if (taskHandleSER) {
+            xTaskNotifyFromISR (taskHandleSER, 0x00010000UL, eSetBits, &taskWoken);
+        }
 #endif
-        xTaskNotifyFromISR (taskHandleLED, 0x32, eSetValueWithOverwrite, NULL);  // LED: Yellow 1Hz
+        if (taskHandleLED) {
+            xTaskNotifyFromISR (taskHandleLED, 0x32, eSetValueWithOverwrite, NULL);  // LED: Yellow 1Hz
+        }
     } else if (intflag & USBFS_UIF_SUSPEND) {
         /* usb suspend interrupt processing */
         if (USBFSD->MIS_ST & USBFS_UMS_SUSPEND) {
             USBFS_DevSleepStatus |= 0x02;
             // Notify tasks
-            xTaskNotifyFromISR (taskHandleDAP, 0x00020000UL, eSetBits, &taskWoken);
+            if (taskHandleDAP) {
+                xTaskNotifyFromISR (taskHandleDAP, 0x00020000UL, eSetBits, &taskWoken);
+            }
 #if DAP_WITH_CDC
-            xTaskNotifyFromISR (taskHandleSER, 0x00020000UL, eSetBits, &taskWoken);
+            if (taskHandleSER) {
+                xTaskNotifyFromISR (taskHandleSER, 0x00020000UL, eSetBits, &taskWoken);
+            }
 #endif
-            xTaskNotifyFromISR (taskHandleLED, 0x32, eSetValueWithOverwrite, NULL);  // LED: Yellow 1Hz
+            if (taskHandleLED) {
+                xTaskNotifyFromISR (taskHandleLED, 0x32, eSetValueWithOverwrite, NULL);  // LED: Yellow 1Hz
+            }
             if (USBFS_DevSleepStatus == 0x03) {
                 /* Handling usb sleep here */
             }

@@ -72,6 +72,7 @@
 #define INCLUDE_xTimerPendFunctionCall      0
 #define INCLUDE_xTaskAbortDelay             1
 #define INCLUDE_xTaskGetHandle              1
+#define INCLUDE_xTaskGetSchedulerState      1
 #define INCLUDE_xSemaphoreGetMutexHolder    1
 #define INCLUDE_uxTaskGetStackHighWaterMark 0
 

@@ -15,6 +15,17 @@
 #include "debug.h"
 
 /******************************************************************************/
+/* Build-configuration defaults */
+/* Without these, a build that forgets the -D flags silently produces a
+ * different (or non-compliant) device.  Override them from the build system. */
+#ifndef MSOS_DESC
+#define MSOS_DESC                    2      /* 0=none, 1=MSOS1.0, 2=MSOS2.0(WinUSB) */
+#endif
+#ifndef DAP_WITH_CDC
+#define DAP_WITH_CDC                 1      /* 1 = expose the CDC serial port */
+#endif
+
+/******************************************************************************/
 /* global define */
 /* file version */
 #define DEF_FILE_VERSION             0x01

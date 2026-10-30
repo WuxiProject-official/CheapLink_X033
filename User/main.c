@@ -15,21 +15,21 @@
 #include "task.h"
 
 #include "ch32x035_usbfs_device.h"
-#include "usbqueue.h"  // 这个版本的USBQueue已经修改过。This version of USBQueue library has been modified.
+#include "usbqueue.h" // 这个版本的USBQueue已经修改过。This version of USBQueue library has been modified.
 
 #include "DAP_config.h"
 #include "DAP.h"
 
 extern TaskHandle_t taskHandleLED;
-extern void task_LED (void *pvParameters);
+extern void task_LED(void *pvParameters);
 extern TaskHandle_t taskHandleDAP;
-extern void task_DAP (void *pvParameters);
+extern void task_DAP(void *pvParameters);
 #if DAP_WITH_CDC
 extern TaskHandle_t taskHandleSER;
-extern void task_SER (void *pvParameters);
+extern void task_SER(void *pvParameters);
 #endif
 
-extern void USBFS_IRQHandler (void);  // Assembly wrapper
+extern void USBFS_IRQHandler(void); // Assembly wrapper
 
 #if DAP_WITH_CDC
 extern void CDCSerial_QueueReset();
@@ -37,39 +37,38 @@ extern void CDCSerial_QueueReset();
 
 volatile char taskname;
 
-void vApplicationStackOverflowHook (TaskHandle_t xTask, char *pcTaskName) {
+void vApplicationStackOverflowHook(TaskHandle_t xTask, char *pcTaskName)
+{
 
     taskDISABLE_INTERRUPTS();
     taskname = pcTaskName[0];
-    while (1);
+    while (1)
+        ;
 }
 
-static void ConvertUint32ToUnicode16Str (uint32_t num, unsigned char *str) {
+static void ConvertUint32ToUnicode16Str(uint32_t num, unsigned char *str)
+{
     // Note: this does not append null terminator
-    for (uint32_t i = 0; i < 8; i++) {
+    for (uint32_t i = 0; i < 8; i++)
+    {
         uint8_t digit = (num >> ((7 - i) << 2)) & 0x0F;
         str[2 * i] = digit < 10 ? '0' + digit : 'A' + digit - 10;
-        str[2 * i + 1] = 0;  // constant 0 for high byte in Unicode-16
+        str[2 * i + 1] = 0; // constant 0 for high byte in Unicode-16
     }
 }
 
 volatile uint8_t DAP_PIOC_FallbackFlag = 0;
 
-__attribute__ ((noreturn)) int main (void) {
-    NVIC_PriorityGroupConfig (NVIC_PriorityGroup_0);
-    SystemCoreClockUpdate();
-    Delay_Init();
-#if DEBUG
-#if SDI_PRINT == SDI_PR_CLOSE
-    USART_Printf_Init (921600);
-#else
-    SDI_Printf_Enable();
-#endif
-    // Print hello info if in debug mode
-    PRINT ("CheapLink_X033 V1.1.0.0 running on CH32X035(%04X)-%08X%08X clk=%d\r\n",
-           DBGMCU_GetCHIPID() >> 16, X035CHIPSN1, X035CHIPSN2, SystemCoreClock);
+TaskHandle_t taskHandleInit;
 
-#endif
+// VDD supply voltage sampled by main() on startup
+static PWR_VDD usbVddVoltage = PWR_VDD_3V3;
+
+// Hardware init that runs with the scheduler already active. main() creates this
+// task, which brings up USB and the application tasks and then deletes itself.
+void task_init(void *pvParameters)
+{
+    (void)pvParameters;
 
     // Init queue
     USBQueue_StatusReset();
@@ -77,8 +76,74 @@ __attribute__ ((noreturn)) int main (void) {
     CDCSerial_QueueReset();
 #endif
 
+    // Prepare USB desc SN
+    uint32_t chipNum = (X035CHIPSN1 ^ ~X035CHIPSN2);
+    ConvertUint32ToUnicode16Str(chipNum, MySerNumInfo + 12);
+
+    // Create the application tasks BEFORE USB is brought up, so the USB ISR can
+    // never run before the task handles it notifies are valid.
+    xTaskCreate((TaskFunction_t)task_LED,
+                (const char *)"LED",
+                (uint16_t)128,
+                (void *)NULL,
+                (UBaseType_t)1,
+                (TaskHandle_t *)&taskHandleLED);
+    xTaskCreate((TaskFunction_t)task_DAP,
+                (const char *)"DAP",
+                (uint16_t)192,
+                (void *)NULL,
+                (UBaseType_t)3,
+                (TaskHandle_t *)&taskHandleDAP);
+#if DAP_WITH_CDC
+    xTaskCreate((TaskFunction_t)task_SER,
+                (const char *)"SER",
+                (uint16_t)128,
+                (void *)NULL,
+                (UBaseType_t)3,
+                (TaskHandle_t *)&taskHandleSER);
+#endif
+
+    // Init USB.
+    // SetVTFIRQ() only maps the handler into the VTF table; the NVIC line itself
+    // is enabled further down, once the queue is armed and the tasks exist.
+    SetVTFIRQ((u32)USBFS_IRQHandler, USBFS_IRQn, 0, ENABLE);
+    USBFS_RCC_Init();
+    USBFS_Device_Init(ENABLE, usbVddVoltage);
+    // USBFS_Device_Endp_Init() re-armed EP1 OUT, so point it back at the queue
+    // head before any packet can be received.
+    USBQueue_StatusReset();
+
+    DAP_Setup();
+
+    // Enable the USB interrupt only now: the ISR notifies taskHandleDAP /
+    // taskHandleLED / taskHandleSER, which must exist before the first interrupt,
+    // and DAP_Setup() has to be complete before a queued command is processed.
+    NVIC_EnableIRQ(USBFS_IRQn);
+
+    // Self-destruct after init
+    vTaskDelete(NULL);
+}
+
+__attribute__((noreturn)) int main(void)
+{
+    NVIC_PriorityGroupConfig(NVIC_PriorityGroup_0);
+    SystemCoreClockUpdate();
+    Delay_Init();
+    RCC_ClearFlag();
+#if DEBUG
+#if SDI_PRINT == SDI_PR_CLOSE
+    USART_Printf_Init(921600);
+#else
+    SDI_Printf_Enable();
+#endif
+    // Print hello info if in debug mode
+    PRINT("CheapLink_X033 V1.1.0.0 running on CH32X035(%04X)-%08X%08X clk=%d\r\n",
+          DBGMCU_GetCHIPID() >> 16, X035CHIPSN1, X035CHIPSN2, SystemCoreClock);
+
+#endif
+
     // Configure clocks
-    RCC_APB2PeriphClockCmd (RCC_APB2Periph_GPIOA | RCC_APB2Periph_GPIOC | RCC_APB2Periph_AFIO, ENABLE);
+    RCC_APB2PeriphClockCmd(RCC_APB2Periph_GPIOA | RCC_APB2Periph_GPIOC | RCC_APB2Periph_AFIO, ENABLE);
     // Prepare GPIO for LED
     GPIO_InitTypeDef GPIO_InitStructure = {0};
     GPIOA->BSHR = GPIO_Pin_0 | GPIO_Pin_1;
@@ -86,74 +151,73 @@ __attribute__ ((noreturn)) int main (void) {
     GPIO_InitStructure.GPIO_Pin = GPIO_Pin_3;
     GPIO_InitStructure.GPIO_Mode = GPIO_Mode_Out_PP;
     GPIO_InitStructure.GPIO_Speed = GPIO_Speed_50MHz;
-    GPIO_Init (GPIOC, &GPIO_InitStructure);
+    GPIO_Init(GPIOC, &GPIO_InitStructure);
     GPIO_InitStructure.GPIO_Pin = GPIO_Pin_0 | GPIO_Pin_1;
-    GPIO_Init (GPIOA, &GPIO_InitStructure);
+    GPIO_Init(GPIOA, &GPIO_InitStructure);
 
-#if USE_PIOC_ACC
     // Test electrical connection, warn here if not connected
     uint32_t flagPIOCConnected = 1;
-    GPIO_PinRemapConfig (GPIO_Remap_SWJ_Disable, ENABLE);
+    GPIO_PinRemapConfig(GPIO_Remap_SWJ_Disable, ENABLE);
     GPIO_InitStructure.GPIO_Pin = GPIO_Pin_18 | GPIO_Pin_19;
     GPIO_InitStructure.GPIO_Mode = GPIO_Mode_IPU;
-    GPIO_Init (GPIOC, &GPIO_InitStructure);
+    GPIO_Init(GPIOC, &GPIO_InitStructure);
     GPIO_InitStructure.GPIO_Pin = GPIO_Pin_5 | GPIO_Pin_7;
     GPIO_InitStructure.GPIO_Mode = GPIO_Mode_Out_PP;
     GPIO_InitStructure.GPIO_Speed = GPIO_Speed_50MHz;
-    GPIO_Init (GPIOA, &GPIO_InitStructure);
-    GPIO_SetBits (GPIOA, GPIO_Pin_5 | GPIO_Pin_7);
-    Delay_Us (10);
-    if (GPIO_ReadInputDataBit (GPIOC, GPIO_Pin_18) != SET || GPIO_ReadInputDataBit (GPIOC, GPIO_Pin_19) != SET)
+    GPIO_Init(GPIOA, &GPIO_InitStructure);
+    GPIO_SetBits(GPIOA, GPIO_Pin_5 | GPIO_Pin_7);
+    Delay_Us(10);
+    if (GPIO_ReadInputDataBit(GPIOC, GPIO_Pin_18) != SET || GPIO_ReadInputDataBit(GPIOC, GPIO_Pin_19) != SET)
         flagPIOCConnected = 0;
-    GPIO_ResetBits (GPIOA, GPIO_Pin_5 | GPIO_Pin_7);
-    Delay_Us (10);
-    if (GPIO_ReadInputDataBit (GPIOC, GPIO_Pin_18) != RESET || GPIO_ReadInputDataBit (GPIOC, GPIO_Pin_19) != RESET)
+    GPIO_ResetBits(GPIOA, GPIO_Pin_5 | GPIO_Pin_7);
+    Delay_Us(10);
+    if (GPIO_ReadInputDataBit(GPIOC, GPIO_Pin_18) != RESET || GPIO_ReadInputDataBit(GPIOC, GPIO_Pin_19) != RESET)
         flagPIOCConnected = 0;
-    if (!flagPIOCConnected) {
+#if USE_PIOC_ACC
+    // For PIOC acceleration, if PC18/19 are not connected, fallback.
+    if (!flagPIOCConnected)
+    {
         GPIOC->BCR = GPIO_Pin_3;
         GPIOA->BSHR = GPIO_Pin_0 | GPIO_Pin_1;
         DAP_PIOC_FallbackFlag = 1;
-        Delay_Ms (2000);
+        Delay_Ms(2000);
     }
+#else
+    // For legacy implementation, if PC18/19 are connected, must disable SWD port to avoid conflict.
+    if (flagPIOCConnected)
+    {
+        GPIOC->BCR = GPIO_Pin_3;
+        GPIOA->BSHR = GPIO_Pin_0 | GPIO_Pin_1;
+        Delay_Ms(2000);
+    }
+    else
+    {
+        GPIO_PinRemapConfig(GPIO_Remap_SWJ_Disable, DISABLE);
+    }
+#endif
     GPIO_InitStructure.GPIO_Pin = GPIO_Pin_5 | GPIO_Pin_7;
     GPIO_InitStructure.GPIO_Mode = GPIO_Mode_AIN;
-    GPIO_Init (GPIOA, &GPIO_InitStructure);
-#endif
+    GPIO_Init(GPIOA, &GPIO_InitStructure);
 
-    // Prepare USB desc SN
-    uint32_t chipNum = (X035CHIPSN1 ^ ~X035CHIPSN2);
-    ConvertUint32ToUnicode16Str (chipNum, MySerNumInfo + 12);
-    // Init USB
-    USBFS_RCC_Init();
-    USBFS_Device_Init (ENABLE, PWR_VDD_SupplyVoltage());
-    SetVTFIRQ ((u32)USBFS_IRQHandler, USBFS_IRQn, 0, ENABLE);
-    NVIC_EnableIRQ (USBFS_IRQn);
-    DAP_Setup();
+    // Because PWR_VDD_SupplyVoltage() calls Delay_Us(), which reconfigures SysTick,
+    // the VDD should be sampled before vTaskStartScheduler()
+    usbVddVoltage = PWR_VDD_SupplyVoltage();
 
-    xTaskCreate ((TaskFunction_t)task_LED,
-                 (const char *)"LED",
-                 (uint16_t)128,
-                 (void *)NULL,
-                 (UBaseType_t)1,
-                 (TaskHandle_t *)&taskHandleLED);
-    xTaskCreate ((TaskFunction_t)task_DAP,
-                 (const char *)"DAP",
-                 (uint16_t)192,
-                 (void *)NULL,
-                 (UBaseType_t)3,
-                 (TaskHandle_t *)&taskHandleDAP);
-#if DAP_WITH_CDC
-    xTaskCreate ((TaskFunction_t)task_SER,
-                 (const char *)"SER",
-                 (uint16_t)128,
-                 (void *)NULL,
-                 (UBaseType_t)3,
-                 (TaskHandle_t *)&taskHandleSER);
-#endif
+    // Create init task to perform hardware init, then self-destruct
+    xTaskCreate((TaskFunction_t)task_init,
+                (const char *)"INIT",
+                (uint16_t)128,
+                (void *)NULL,
+                (UBaseType_t)3,
+                (TaskHandle_t *)&taskHandleInit);
 
+    // The USB interrupt is enabled by task_init(), after USBFS_Device_Init() has
+    // armed the endpoints, the queue has been re-armed and the application tasks
+    // exist.
     vTaskStartScheduler();
 
-    while (1) {
+    while (1)
+    {
         ;
     }
 }

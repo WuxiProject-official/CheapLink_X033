@@ -102,19 +102,29 @@ static volatile uint8_t UQ_OutPtrIn = 0, UQ_OutPtrOut = 0;
 static volatile uint8_t UQ_OutCntIn = 0, UQ_OutCntOut = 0;
 static volatile uint8_t UQ_InIdle = 1, UQ_OutIdle = 1;
 
+/* Reset the bidirectional queue state: indices, counters and idle flags.
+ * The OUT endpoint DMA address is pointed back to the first buffer, but the
+ * endpoint is intentionally left un-armed (callers decide) and the buffers are
+ * NOT cleared, so this is cheap enough to be called from the USB ISR. */
 void USBQueue_StatusReset() {
-    MEMCLEAR (UQ_InQueue);
-    MEMCLEAR (UQ_OutQueue);
-    MEMCLEAR (UQ_InLen);
-    MEMCLEAR (UQ_OutLen);
     UQ_InPtrIn = 0, UQ_InPtrOut = 0;
     UQ_InCntIn = 0, UQ_InCntOut = 0;
     UQ_OutPtrIn = 0, UQ_OutPtrOut = 0;
     UQ_OutCntIn = 0, UQ_OutCntOut = 0;
     UQ_InIdle = 1, UQ_OutIdle = 1;
     USBQueue_SetEPDNAddr (UQ_InQueue[UQ_InPtrIn]);
-    USBQueue_SetEPDNAck (ENABLE);
     // If other reset operation required, process below.
+}
+
+/* Discard every buffered packet, reset the state and (re-)arm the OUT endpoint.
+ * Task context only: clears UQ_QUEUELEN * 2 * UQ_PACKLEN_MAX bytes. */
+void USBQueue_Purge() {
+    MEMCLEAR (UQ_InQueue);
+    MEMCLEAR (UQ_OutQueue);
+    MEMCLEAR (UQ_InLen);
+    MEMCLEAR (UQ_OutLen);
+    USBQueue_StatusReset();
+    USBQueue_SetEPDNAck (ENABLE);
 }
 
 #include "FreeRTOS.h"
@@ -134,7 +144,10 @@ void USBQueue_EpOUT_Handler (uint8_t len, BaseType_t *taskWoken) {
         UQ_InCntIn++;
         xTaskNotifyFromISR (taskHandleDAP, 0x01, eSetBits, taskWoken);
     }
-    if ((uint8_t)(UQ_InCntIn - UQ_InCntOut) != UQ_QUEUELEN) {
+    if (USBFS_IsEPHalted (UQ_EP_DN | DEF_UEP_OUT)) {
+        // EP1 OUT is halted by the host: keep it stalled, do not prepare a new buffer.
+        UQ_InIdle = 1;
+    } else if ((uint8_t)(UQ_InCntIn - UQ_InCntOut) != UQ_QUEUELEN) {
         USBQueue_SetEPDNAddr (UQ_InQueue[UQ_InPtrIn]);
         USBQueue_SetEPDNAck (ENABLE);
     } else {
@@ -145,6 +158,11 @@ void USBQueue_EpOUT_Handler (uint8_t len, BaseType_t *taskWoken) {
 
 void USBQueue_EpIN_Handler() {
     if (UQ_OutCntIn != UQ_OutCntOut) {
+        if (USBFS_IsEPHalted (UQ_EP_UP | DEF_UEP_IN)) {
+            // EP2 IN is halted by the host: stop uploading, resume after CLEAR_FEATURE.
+            UQ_OutIdle = 1;
+            return;
+        }
         // left packets in queue
         USBQueue_EPUpload (UQ_OutQueue[UQ_OutPtrOut], UQ_OutLen[UQ_OutPtrOut]);
         UQ_OutPtrOut++;
@@ -155,6 +173,25 @@ void USBQueue_EpIN_Handler() {
         UQ_OutCntOut++;
     } else {
         UQ_OutIdle = 1;
+    }
+}
+
+/* Invoked by the USB device stack when the host issues
+ * SET_FEATURE / CLEAR_FEATURE(ENDPOINT_HALT) for one of our endpoints.
+ * Endpoint registers and the stall flag are handled by the device stack; this
+ * only cleans up the queue layer.
+ *
+ * DAP is a strict request/response protocol and EP1(OUT)/EP2(IN) form one
+ * bulk pipe pair: if either side is halted or reset, the whole pipeline is out
+ * of sync (a leftover response would be handed to the next URB, a leftover
+ * command would produce a late response). Therefore both directions are reset. */
+void USBQueue_EpHalt_Handler (uint8_t halted, uint8_t ep) {
+    USBQueue_StatusReset();
+
+    if ((halted == 0U) && (ep == (UQ_EP_DN | DEF_UEP_OUT))) {
+        // CLEAR_FEATURE on EP1 OUT: re-arm reception.
+        USBQueue_SetEPDNAck (ENABLE);
+        UQ_InIdle = 0U;
     }
 }
 
@@ -189,9 +226,10 @@ uint8_t USBQueue_DoProcess() {
         }
         UQ_InCntOut++;
 
-        if (UQ_InIdle)                                               // if EpOut paused
+        if (UQ_InIdle)                                                                  // if EpOut paused
         {
-            if ((uint8_t)(UQ_InCntIn - UQ_InCntOut) != UQ_QUEUELEN)  // if Queue not full
+            if ((USBFS_IsEPHalted (UQ_EP_DN | DEF_UEP_OUT) == 0U)                       // if EpOut not halted
+                && ((uint8_t)(UQ_InCntIn - UQ_InCntOut) != UQ_QUEUELEN))                // if Queue not full
             {
                 // start EpOut recv
                 UQ_InIdle = 0U;
@@ -208,9 +246,10 @@ uint8_t USBQueue_DoProcess() {
         }
         UQ_OutCntIn++;
 
-        if (UQ_OutIdle)                       // if EpIn finished
+        if (UQ_OutIdle)                                                       // if EpIn finished
         {
-            if (UQ_OutCntIn != UQ_OutCntOut)  // if Queue not empty
+            if ((USBFS_IsEPHalted (UQ_EP_UP | DEF_UEP_IN) == 0U)               // if EpIn not halted
+                && (UQ_OutCntIn != UQ_OutCntOut))                              // if Queue not empty
             {
                 n = UQ_OutPtrOut++;
                 if (UQ_OutPtrOut == UQ_QUEUELEN)  // loopback
