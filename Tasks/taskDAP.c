@@ -20,9 +20,13 @@ TaskHandle_t taskHandleDAP __attribute__ ((aligned (4)));
 
 void task_DAP (void *pvParameters) {
     xTaskNotify (taskHandleLED, 0x32, eSetValueWithOverwrite);  // LED: Yellow 1Hz
-    volatile int32_t waitFlag;
+    volatile BaseType_t waitFlag;
+    volatile uint32_t notifyValue;
     while (1) {
-        waitFlag = xTaskNotifyWait (0x0, 0xffffffffUL, NULL, pdMS_TO_TICKS (5000));
+        // NOTE: the 3rd parameter of xTaskNotifyWait() is an OUTPUT (the pending
+        // notification value).  Testing the return value of xTaskNotifyWait()
+        // instead only yields pdTRUE/pdFALSE and loses every notification bit.
+        waitFlag = xTaskNotifyWait (0x0, 0xffffffffUL, (uint32_t *)&notifyValue, pdMS_TO_TICKS (5000));
         if (waitFlag == pdFALSE) {
             // Idle for 5s+
             if (USBFS_DevEnumStatus && !(USBFSD->MIS_ST & USBFS_UMS_SUSPEND)) {
@@ -30,13 +34,14 @@ void task_DAP (void *pvParameters) {
                 xTaskNotify (taskHandleLED, 0x31, eSetValueWithOverwrite);  // LED: Yellow Still
             }
         } else {
-            // Check if USB offline
-            if (waitFlag & 0x00030000UL) {
-                // Reset Queue.
-                USBQueue_StatusReset();
+            // ulBitsToClearOnExit = 0xffffffff clears the value on return, so both
+            // masks below must be tested against this single copy.
+            // Check if USB offline (bus reset / suspend): drop the whole pipeline.
+            if (notifyValue & 0x00030000UL) {
+                USBQueue_Purge();
             }
             // Check if command in queue
-            if (waitFlag & 0x0000ffffUL) {
+            if (notifyValue & 0x0000ffffUL) {
                 USBQueue_DoProcess();
             }
         }

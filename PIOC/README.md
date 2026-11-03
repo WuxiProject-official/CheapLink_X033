@@ -23,11 +23,15 @@ This project currently uses PIOC for:
 
 Other communication functions are still implemented by MCU using bit-bang.
 
-To enable PIOC based SW-DP acceleration, set global marco `USE_PIOC_ACC` to `1` and **rebuild all**.
+The SWD timing on the PIOC side has a slow path and a fast path: the slow path generates the clock from `DELAY_L2` counting D1/D0, while the fast path uses a variable number of inlined NOPs. The bit period is shortened step by step with the requested frequency. On the 1-NOP path each clock bit still costs 9 PIOC cycles, so the ceiling is set by that fixed overhead.
+
+To enable PIOC based SW-DP acceleration, set global marco `USE_PIOC_ACC` to `1` and **rebuild all**. The project ships two build configurations for this switch: `obj` (`USE_PIOC_ACC=1`) and `obj-legacy` (`USE_PIOC_ACC=0`).
+
+PC18/PC19, the two I/O pins of the PIOC, are also the SDI debug port of the CH32X033 itself. The firmware therefore turns the on-chip debug port off before handing the pins to the PIOC, and probes at startup whether PC18/PC19 are electrically connected to the SWD nets, so that it can fall back to MCU bit-bang on boards without that wiring.
 
 ## Development of PIOC
 
-PIOC is based on an *ancient* RISC core and its toolchain is cimple. So be careful with limitions declared in manuals.  
+PIOC is possibly based on an *ancient* RISC instruction set and its toolchain is cimple. So be careful with limitions declared in manuals.  
 The vendor has only provided its toolchain on Windows platform so you may need a VM if you're developing on non-Windows environment.  
 Due to license restrictions, this repository does not include the toolchain executable. You may find `WASM53B.EXE` and `BIN_HEX.EXE` in official EVT pack from `CH32X035EVT/EXAM/PIOC/Tool_Manual/Tool` and copy them to `PIOC/` to build PIOC binary.  
 

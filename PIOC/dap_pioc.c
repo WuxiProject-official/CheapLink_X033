@@ -16,59 +16,70 @@
 
 #if USE_PIOC_ACC
 
-__attribute__ ((aligned (16))) static const uint8_t PIOC_CODE[] =
+__attribute__((aligned(16))) static const uint8_t PIOC_CODE[] =
 #include "PIOC_SW-DP_inc.h"
+    ; // IntelliSense doesn't like this `#include` flavor and causes false positive "expected a declaration".
 
-void PIOC_DAP_Init (void) {
+void PIOC_DAP_Init(void)
+{
     GPIO_InitTypeDef GPIO_InitStructure = {0};
     GPIO_InitStructure.GPIO_Pin = GPIO_Pin_18 | GPIO_Pin_19;
     GPIO_InitStructure.GPIO_Mode = GPIO_Mode_IPU;
-    GPIO_Init (GPIOC, &GPIO_InitStructure);
-    memcpy ((uint8_t *)(PIOC_SRAM_BASE), PIOC_CODE, sizeof (PIOC_CODE));
-    R8_SYS_CFG |= RB_MST_RESET;                  // reset PIOC
-    R8_SYS_CFG = RB_MST_IO_EN1 | RB_MST_IO_EN0;  // enable IO0&IO1
+    GPIO_Init(GPIOC, &GPIO_InitStructure);
+    memcpy((uint8_t *)(PIOC_SRAM_BASE), PIOC_CODE, sizeof(PIOC_CODE));
+    R8_SYS_CFG |= RB_MST_RESET;                 // reset PIOC
+    R8_SYS_CFG = RB_MST_IO_EN1 | RB_MST_IO_EN0; // enable IO0&IO1
 }
 
-void PIOC_DAP_Reset (void) {
-    R8_SYS_CFG |= RB_MST_RESET;     // reset PIOC
-    R8_SYS_CFG &= (~RB_MST_RESET);  // reset PIOC
+void PIOC_DAP_Reset(void)
+{
+    R8_SYS_CFG |= RB_MST_RESET;    // reset PIOC
+    R8_SYS_CFG &= (~RB_MST_RESET); // reset PIOC
 }
 
-void PIOC_DAP_Run (void) {
+void PIOC_DAP_Run(void)
+{
     R8_SYS_CFG |= RB_MST_CLK_GATE;
 }
 
-void PIOC_DAP_Halt (void) {
+void PIOC_DAP_Halt(void)
+{
     R8_SYS_CFG &= (~RB_MST_CLK_GATE);
 }
 
-void PIOC_DAP_Cmd (PIOC_DAPCmdType_t cmd, uint8_t cmd_arg) {
+void PIOC_DAP_Cmd(PIOC_DAPCmdType_t cmd, uint8_t cmd_arg)
+{
     // SFR_DATA_REG3 is used for command type
     R8_DATA_REG3 = (uint8_t)cmd;
     // SFR_DATA_REG4 is used for command argument
     R8_DATA_REG4 = cmd_arg;
 }
 
-uint8_t PIOC_DAP_ReadCmdResult (void) {
-    return R8_DATA_REG5;  // SFR_DATA_REG5 is used for command result
+uint8_t PIOC_DAP_ReadCmdResult(void)
+{
+    return R8_DATA_REG5; // SFR_DATA_REG5 is used for command result
 }
 
-void PIOC_DAP_WriteSFR (uint16_t index, uint8_t value) {
+void PIOC_DAP_WriteSFR(uint16_t index, uint8_t value)
+{
     (*((volatile unsigned char *)(PIOC_SFR_BASE + 0x20 + index))) = value;
 }
 
-void PIOC_DAP_PutData (uint8_t *data, uint16_t len) {
+void PIOC_DAP_PutData(uint8_t *data, uint16_t len)
+{
     // from PIOC_SRAM_BASE + 0x800, the next 2KB SRAM is used for data transfer
-    memcpy ((uint8_t *)(PIOC_SRAM_BASE + 0x800), data, len);
+    memcpy((uint8_t *)(PIOC_SRAM_BASE + 0x800), data, len);
 }
 
 #include "DAP_config.h"
 #include "DAP.h"
 extern volatile uint8_t DAP_PIOC_ClockDelay[2];
 extern volatile uint8_t DAP_PIOC_FastClock;
+extern volatile uint8_t DAP_PIOC_FastSkip_Cycles;
 extern volatile uint8_t DAP_PIOC_FallbackFlag;
 
-void PIOC_DAP_LoadCfg (void) {
+void PIOC_DAP_LoadCfg(void)
+{
     // SFR_DATA_REG0 is used for DAP turnaround cycle
     R8_DATA_REG0 = DAP_Data.swd_conf.turnaround;
     // SFR_DATA_REG1 is used for DAP idle cycle
@@ -80,30 +91,44 @@ void PIOC_DAP_LoadCfg (void) {
     R8_DATA_REG7 = DAP_PIOC_ClockDelay[1];
 }
 
-int PIOC_DAP_GetItFlag (void) {
+int PIOC_DAP_GetItFlag(void)
+{
     // SFR_DATA_REG0 is used for DAP interrupt flag
     return (R8_SYS_CFG & RB_INT_REQ) != 0;
 }
 
-__attribute__((section(".highcode")))
-int PIOC_DAP_RunAndWait(void) {
-    // Set SFR_CTRL_WR to start PIOC
-    if (DAP_PIOC_FastClock != 0) {
-        // for fast clock, set SFR_CTRL_WR[7]=1
-        R8_CTRL_WR = 0x80;
-    } else {
+__attribute__((section(".highcode"))) int PIOC_DAP_RunAndWait(void)
+{
+    // Set SFR_CTRL_WR to start the PIOC
+    if (DAP_PIOC_FastClock != 0)
+    {
+        // for fast clock, set SFR_CTRL_WR[4]=1
+        // load FastPath skip cycles(10 cycles max. 11 means 1NOP path) to SFR_CTRL_WR[3:0]
+        uint8_t skipCycles = (DAP_PIOC_FastSkip_Cycles > 11U ? 11U : DAP_PIOC_FastSkip_Cycles) & 0x0FU;
+        R8_CTRL_WR = 0x10U | skipCycles;
+    }
+    else
+    {
         R8_CTRL_WR = 0x00;
     }
     /* PIOC running... */
-    // Wait for PIOC to complete, with deadlock detection via hardware timer.
-    // TIMESTAMP_GET() runs at TIMESTAMP_CLOCK (1 MHz), so the difference is in µs.
-    // Unsigned subtraction wraps correctly in C, so this is safe across roll-overs.
+    // Wait for PIOC to complete, with deadlock detection via the FreeRTOS tick.
+    // xTaskGetTickCount() is a 32-bit tick count (1 ms/tick) updated in the
+    // SysTick ISR; reads are atomic and never torn. The tick count is unsigned
+    // so subtraction wraps correctly across the 49.7-day 32-bit wrap.
     int flagDeadlock = 0;
-    uint32_t tBegin = TIMESTAMP_GET();
-    while ((R8_SYS_CFG & RB_DATA_SW_MR) == 0) {
-        if ((TIMESTAMP_GET() - tBegin) >= PIOC_DEADLOCK_TIMEOUT_US) {
-            flagDeadlock = -1;
-            break;
+    TickType_t tBegin = xTaskGetTickCount();
+    uint32_t spinCnt = 0U;
+    while ((R8_SYS_CFG & RB_DATA_SW_MR) == 0)
+    {
+        if (((spinCnt++) & 0x1FFU) == 0U)
+        {
+            TickType_t tNow = xTaskGetTickCount();
+            if ((tNow - tBegin) >= pdMS_TO_TICKS(PIOC_DEADLOCK_TIMEOUT_MS))
+            {
+                flagDeadlock = -1;
+                break;
+            }
         }
     }
     return flagDeadlock;
@@ -116,65 +141,78 @@ extern uint8_t SWD_Transfer_GPIO(uint32_t request, uint32_t *data);
 //   data:    DATA[31:0]
 //   return:  ACK[2:0]
 __attribute__((section(".highcode")))
-uint8_t SWD_Transfer (uint32_t request, uint32_t *data) {
-    if(DAP_PIOC_FallbackFlag){
+uint8_t
+SWD_Transfer(uint32_t request, uint32_t *data)
+{
+    if (DAP_PIOC_FallbackFlag)
+    {
         return SWD_Transfer_GPIO(request, data);
     }
     uint32_t tmp;
-    // Enable PIOC GPIOs
+    // Enable PIOC GPIOs (Speed is hardcoded to 50MHz)
     tmp = GPIOC->CFGXR;
-    tmp &= ~(0x0000FF00UL);  // AF_PP
+    tmp &= ~(0x0000FF00UL); // AF_PP
     tmp |= 0x00009900UL;
     GPIOC->CFGXR = tmp;
     // Disable MCU GPIOs
-    GPIOA->BSHR = (GPIO_Pin_5 | GPIO_Pin_7);  // IPU
+    GPIOA->BSHR = (GPIO_Pin_5 | GPIO_Pin_7); // IPU
     tmp = GPIOA->CFGLR;
-    tmp &= ~(0xF0F00000UL);                   // IPU
+    tmp &= ~(0xF0F00000UL); // IPU
     tmp |= 0x80800000UL;
     GPIOA->CFGLR = tmp;
     // PIOC_DAP_LoadCfg();
-    if (!(request & DAP_TRANSFER_RnW)) {
+    if (!(request & DAP_TRANSFER_RnW))
+    {
         // write transfer
         R32_DATA_REG16_19 = *data;
     }
-    PIOC_DAP_Cmd (PIOC_DAP_SWDTRANSFER, (uint8_t)request);
-    (void)R8_CTRL_RD;  // A read operation to clear flag
+    PIOC_DAP_Cmd(PIOC_DAP_SWDTRANSFER, (uint8_t)request);
+    (void)R8_CTRL_RD; // A read operation to clear flag
     int piocResult = PIOC_DAP_RunAndWait();
     uint8_t ack;
-    if (piocResult != 0) {
+    if (piocResult != 0)
+    {
         // PIOC is unresponsive: reset and restart so subsequent transfers can succeed.
         PIOC_DAP_Halt();
         PIOC_DAP_Reset();
         PIOC_DAP_Run();
         PIOC_DAP_LoadCfg();
-        ack = 0x99;  // non-standard error value to indicate PIOC timeout failure
+        (void)R8_CTRL_RD;  // clear the stale ACK flag left by the aborted transfer
+        ack = 0x88;  // non-standard error value to indicate PIOC timeout failure
     } else {
         ack = R8_CTRL_RD;  // get ACK from SFR_CTRL_RD
         // Only read the data register when the transfer completed successfully;
         // on WAIT/FAULT the PIOC did not produce valid read data.
-        if ((request & DAP_TRANSFER_RnW) && (ack == DAP_TRANSFER_OK)) {
+        if ((request & DAP_TRANSFER_RnW) && (ack == DAP_TRANSFER_OK))
+        {
             // read transfer
             *data = R32_DATA_REG16_19;
         }
     }
     // Enable MCU GPIOs
     tmp = GPIOA->CFGLR;
-    tmp &= ~(0xF0F00000UL);  // OPP
+    tmp &= ~(0xF0F00000UL); // OPP
     tmp |= 0x10100000UL;
     GPIOA->CFGLR = tmp;
     // Disable PIOC GPIOs
-    GPIOC->BSXR = (GPIO_Pin_18 | GPIO_Pin_19) >> 16;  // IPU
+    GPIOC->BSXR = (GPIO_Pin_18 | GPIO_Pin_19) >> 16; // IPU
     tmp = GPIOC->CFGXR;
-    tmp &= ~(0x0000FF00UL);                           // IPU
+    tmp &= ~(0x0000FF00UL); // IPU
     tmp |= 0x00008800UL;
     GPIOC->CFGXR = tmp;
     return ack;
 }
 
-__attribute__ ((interrupt())) void PIOC_IRQHandler (void) {
-    if ((R8_SYS_CFG & RB_INT_REQ) != RESET) {  // currently only used for testdomain timer
+__attribute__((interrupt())) void PIOC_IRQHandler(void)
+{
+    GET_INT_SP();
+
+    if ((R8_SYS_CFG & RB_INT_REQ) != RESET)
+    { // currently only used for testdomain timer
         DAP_Data.timestamp = TIMESTAMP_GET();
     }
+
+    FREE_INT_SP();
 }
 
 #endif

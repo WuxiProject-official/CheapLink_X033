@@ -10,6 +10,7 @@
 * microcontroller manufactured by Nanjing Qinheng Microelectronics.
 *******************************************************************************/
 #include "ch32x035_it.h"
+#include "FreeRTOS.h"  // for GET_INT_SP() / FREE_INT_SP() (portmacro.h)
 
 void NMI_Handler(void) __attribute__((interrupt()));
 void HardFault_Handler(void) __attribute__((interrupt()));
@@ -47,10 +48,14 @@ volatile uint32_t SYSCNT = 0;
 
 void TIM3_IRQHandler(void)
 {
+  GET_INT_SP();
+
 	if (TIM_GetITStatus(TIM3, TIM_IT_Update) != RESET)
 	{
 		TIM_ClearITPendingBit(TIM3, TIM_IT_Update);
 		SYSCNT += 0x10000U;
 	}
+
+	FREE_INT_SP();
 }
 

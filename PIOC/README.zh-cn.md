@@ -23,11 +23,15 @@ To read English version of this file，please turn to [README.md](README.md).
 
 其他通信功能仍然由MCU通过bit-bang来实现。  
 
-若要使用PIOC加速的SW-DP通信，请设置全局的宏定义`USE_PIOC_ACC`为`1`，然后**全部重新构建**.
+PIOC 侧的 SWD 时序分为慢速档与快速档：慢速档由 `DELAY_L2` 按 D1/D0 计数产生时钟，快速档通过可变内联 NOP 实现。位周期随请求频率逐级压缩。在 1-NOP 路径上，每个时钟位仍需要 9 个 PIOC 周期，因此上限由这段固定开销决定。
+
+若要使用PIOC加速的SW-DP通信，请设置全局的宏定义`USE_PIOC_ACC`为`1`，然后**全部重新构建**. 工程已按此开关提供两个构建配置：`obj`（`USE_PIOC_ACC=1`）与`obj-legacy`（`USE_PIOC_ACC=0`）。
+
+PIOC 的两个 I/O 引脚 PC18/PC19 同时也是 CH32X033 自身的 SDI 调试口。因此固件在把引脚交给 PIOC 前会先关闭片上调试口，并在启动时检测 PC18/PC19 是否与 SWD 网络电气相连，以便在没有该走线的板子上回退到 MCU bit-bang。
 
 ## PIOC的开发
 
-PIOC基于一个较老的RISC内核，其工具链也相对简单，因此请特别注意手册中注明的各项限制。  
+PIOC 可能是基于一个较老的 RISC 内核的指令集设计的，其工具链也相对简单，因此请特别注意手册中注明的各项限制。  
 厂商目前仅提供 Windows 平台的工具链，如果你在非 Windows 环境下开发，可能需要使用虚拟机。  
 受许可证限制，本仓库不包含工具链可执行文件。你可以在官方 EVT 包的`CH32X035EVT/EXAM/PIOC/Tool_Manual/Tool`目录中找到`WASM53B.EXE`和`BIN_HEX.EXE`，并将它们复制到`PIOC/`目录以构建PIOC代码数据。  
 

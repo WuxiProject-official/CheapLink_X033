@@ -93,6 +93,11 @@ extern void USBFS_RCC_Init (void);
 extern void USBFS_Sleep_Wakeup_Operate (void);
 extern uint8_t USBFS_Endp_DataUp (uint8_t endp, uint8_t *pbuf, uint16_t len, uint8_t mod);
 
+/* Endpoint stall (HALT) flag query.  HALT is protocol-stack state: set/cleared by
+ * SET_FEATURE / CLEAR_FEATURE(ENDPOINT_HALT), invalidated by a bus reset.
+ * The application layer only queries it.  ep: DEF_UEPn | DEF_UEP_IN / DEF_UEP_OUT. */
+extern uint8_t USBFS_IsEPHalted (uint8_t ep);
+
 void intt_function();
 
 #endif

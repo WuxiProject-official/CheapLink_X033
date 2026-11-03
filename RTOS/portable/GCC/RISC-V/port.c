@@ -80,7 +80,7 @@ interrupt stack after the scheduler has started. */
 	const StackType_t xISRStackTop = ( StackType_t ) __freertos_irq_stack_top;
 #endif
 
-static UBaseType_t uxCriticalNesting = 0xaaaaaaaa;
+static volatile UBaseType_t uxCriticalNesting = 0xaaaaaaaa;
 /*
  * Setup the timer to generate the tick interrupts.  The implementation in this
  * file is weak to allow application writers to change the timer used to
@@ -236,13 +236,18 @@ void SysTick_Handler(void) __attribute__((interrupt())) __attribute__((section("
 void SysTick_Handler( void )
 {
     GET_INT_SP();
-    portDISABLE_INTERRUPTS();
+    /* Do NOT touch the global interrupt enable here.  portDISABLE_INTERRUPTS()
+    / portENABLE_INTERRUPTS() do not maintain uxCriticalNesting, so an
+    unconditional portENABLE_INTERRUPTS() would override the nesting semantics
+    and re-enable interrupts inside a critical section (corrupting RTOS state).
+    The tick handler runs with MIE cleared by hardware already. */
+    //portDISABLE_INTERRUPTS();
     SysTick->SR=0;
     if( xTaskIncrementTick() != pdFALSE )
     {
         portYIELD();
     }
-    portENABLE_INTERRUPTS();
+    //portENABLE_INTERRUPTS();
     FREE_INT_SP();
 }
 
