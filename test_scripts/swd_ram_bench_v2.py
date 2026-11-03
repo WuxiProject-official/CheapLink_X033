@@ -8,6 +8,12 @@ SWD RAM 读写测速脚本（基于 OpenOCD / CMSIS-DAP）
 
 依赖: Python 3.8+，仅标准库。
 
+作者
+----
+
+- rinscr3003
+    - Copilot: Deepseek V4.1 Flash@Medium
+
 用法示例
 --------
   # 自动启动 OpenOCD（默认 cmsis-dap + stm32h7x 配置）

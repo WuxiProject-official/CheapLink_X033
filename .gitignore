@@ -11,6 +11,6 @@ PIOC/PIOC_SW-DP.BIN
 PIOC/PIOC_SW-DP.LST
 /obj-legacy
 agent.explore/
-/__pycache__
+__pycache__
 # 测试脚本的运行产物（每次运行都会重新生成）
 test_scripts/memtest_out/

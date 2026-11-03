@@ -1,85 +1,79 @@
 # -*- coding: utf-8 -*-
-"""SWD 内存读写压力测试（memtest 风格）
+"""SWD 内存读写压力测试（memtest 风味）
 
-用途
-----
-在**任意** CMSIS-DAP + OpenOCD 环境下，对目标的 RAM 做"多种图案 × 两个方向 ×
-不同访问宽度 × 不同地址"的读写压力测试，并把失败样本按"损坏形态"分类，
-用来回答两个问题：
+在 CMSIS-DAP + OpenOCD + Cortex-M 目标的环境下，对目标的 RAM 做以下四维度的交叉读写压力测试：
+- 多种图案 
+- 读/写方向
+- 不同访问宽度
+- 不同地址，
+
+并把失败样本按"损坏形态"分类，用来回答两个问题：
 
    1. 链路/固件在高速档下**会不会错**？
    2. 一旦错，**怎么个错法**（哪一位、哪种规律）？
 
+作者
+----
+
+- rinscr3003
+    - with Copilot: Deepseek V4.1 Flash
+
+
 与 `swd_ram_bench_v2.py` 的关系
 -------------------------------
+
 后者测的是**吞吐率**（KiB/s），本脚本测的是**正确性**。二者共用同一套 telnet
 传输层与目标识别代码，故本脚本直接从同目录导入 `swd_ram_bench_v2`。
 
-设计目标：通用化
-----------------
-原脚本为 CMSIS-DAP + STM32H750 这一**特定组合**而写，硬编码了
-期望 CPUID、测试地址与 4000/24000 两个档位。现在这些都变成参数：
+提示
+----
 
-| 原硬编码 | 现在 |
-|---|---|
-| 期望 CPUID `0x411FC271` | 自动识别内核（`read_cpuid` + `KNOWN_CPU_PARTS`）；`--expect-cpuid` 可覆盖；识别失败仅告警（`--require-cpu` 可强制） |
-| 测试地址 `0x24000000` | `--addr`；用 `KNOWN_REGIONS` 校验并把越界地址裁剪到区域内 |
-| 档位 4000 / 24000 | `--speeds` 任意列表；`--modes` 支持名称或显式 `写:读`；`--matrix` 自动生成全部速度对 |
-| 四种模式名写死 | 模式 = 速度对；名称只是快捷方式；`--hs-threshold` 决定何谓"高速" |
-| 固定 32 位访问 | `--width {32,16,8}` → `mdw/mdh/mdb`，图案与损坏模型按宽度自适应 |
-| 三个图案集硬编码 | 注册表 + `--pattern-file` 载入自定义图案 |
+* 每笔 SWD 传输都伴随一次引脚模式切换与跨核等待，所以本脚本测的是**逐字正确性**
+  而非吞吐率；吞吐率请用 `swd_ram_bench_v2.py`。
+* 固件在等待溢出或传输未完成时可能返回错误 ACK 而不报错，表现为**单条命令耗时
+  异常长**。脚本用 `--slow-sample-ms`（默认 500 ms）按**单条写/读命令的往返**
+  把这类样本单独计数，便于与真正的值不符区分（该阈值不含脚本排空日志的固定等待）。
 
-安全与纪律
---------------------------------
-* **目标必须 halted** 才能稳定访问内存（WCH/OpenOCD 均为要求）⇒ 默认自动 `halt`。
-* **绝不杀别人的 openocd 进程**。要用自己的实例请显式 `--spawn`；默认 `--attach`
-  连已有实例，发现端口不可用则提示你怎么起。
-* 每 N 个样本做一次低速 CPUID 检测（`--health-every`），及早发现链路故障。
-* 连续失败达 `--abort-after` 立即止损。
-* 对**远端**设备做高速测试需显式 `--yes-remote`（高速档曾把主机的 USB 子系统拖死）。
-* `--max-hs-ops` 是**高速操作次数硬上限**，达到即停。
-* **只写 RAM**：地址落在 `KNOWN_REGIONS` 之外时会拒绝执行（`--force-addr` 可跳过，
-  但你得自己确认那里可写）。
 
 用法
 ----
-    # 连已有的 OpenOCD（默认 127.0.0.1:4444），四方向全跑
+    # 连已有的 OpenOCD（默认 127.0.0.1:4444），每档自成收发
+    python swd_memtest.py
+
+    # 低速档与高速档交叉（写读方向互换）
     python swd_memtest.py --modes all
 
     # 指定地址、宽度、档位
-    python swd_memtest.py --addr 0x20000000 --width 16 --speeds 4000,12000,20000
+    python swd_memtest.py --addr 0x20000000 --width 16 --speeds 2000,4000,8000
 
     # 自动生成全部速度对（写入速度 × 读出速度）
-    python swd_memtest.py --speeds 1000,4000,24000 --matrix
+    python swd_memtest.py --speeds 1000,2000,4000,8000 --matrix
 
     # 只打 walking ones/zeros（定位具体哪一位错）
-    python swd_memtest.py --suites walk
+    python swd_memtest.py --suites walk --modes all
 
     # 用自定义图案文件
     python swd_memtest.py --pattern-file my_patterns.json
 
-    # 自己拉起 OpenOCD（不干扰已有实例）
+    # 自己拉起 OpenOCD（结束时按 PID 结束该进程）
     python swd_memtest.py --spawn --interface cmsis-dap.cfg --target stm32h7x.cfg
 
-    # 远端设备 + 高速（需显式确认）
-    python swd_memtest.py <remote-host> 4444 --modes all --yes-remote
-
-    # 查看可用的图案集 / 损坏模型 / 速度模式
+    # 查看可用的图案集 / 损坏模型
     python swd_memtest.py --list-suites
     python swd_memtest.py --list-models
 
 以 H750 为目标为例：换目标要改什么
 ----------------------------------
-本脚本的**默认值**是按 STM32H750/STM32H7 + CMSIS-DAP 这一组合设定的（本项目
-自身的 ARM SWD 目标即 H750 系）。换别的目标时，下面的项必须同步修改，否则容易
-出现“命令都成功、读回来却全是错的”这类假失败：
+本脚本的**默认值**是按 STM32H750/STM32H7 + CMSIS-DAP 这一组合设定的。
+换别的目标时，下面的项必须同步修改，否则容易出现“命令都成功、读回来却
+全是错的”这类假失败：
 
 | 要改的东西 | 在哪里改 | 默认值 / 说明 |
 |---|---|---|
 | OpenOCD 的 interface/target cfg | `--interface` / `--target` | 默认取自 `swd_ram_bench_v2.DEFAULT_INTERFACE/DEFAULT_TARGET`，即 `cmsis-dap.cfg` + `stm32h7x.cfg`。**换芯片必须同时改这两个** |
 | RAM 区域与默认起始地址 | `swd_ram_bench_v2.KNOWN_REGIONS` / `DEFAULT_ADDR` | 默认是 STM32H7 的 DTCM / AXI SRAM / D2 SRAM1-3 / D3 SRAM4。地址范围检查与 `--region-index` 都依赖它 |
 | cfg 支持的内核 | `swd_ram_bench_v2.TARGET_CPU_PARTS` | 默认仅 Cortex-M7。不匹配时脚本给黄色告警（`--require-cpu` 时中止） |
-| 速度档位 | `--speeds` | 默认 `1000,4000,20000`；高速档随目标与适配器能力而变 |
+| 速度档位 | `--speeds` | 默认 `1000,2000,4000,8000`，同时测试高速/低速路径 |
 | 测试地址 | `--addr` | 默认从 `KNOWN_REGIONS` 选；务必落在目标真实 RAM 内 |
 
 > `KNOWN_REGIONS` 只做**区域级**判断：同一内核下不同型号的 RAM 划分并不相同，
@@ -88,9 +82,12 @@
 from __future__ import annotations
 
 import argparse
+import atexit
 import json
+import os
 import random
 import re
+import subprocess
 import sys
 import time
 from collections import Counter
@@ -114,8 +111,94 @@ try:
 except Exception:
     pass
 
-LOCAL_HOSTS = ("127.0.0.1", "localhost", "::1", "")
-DEFAULT_HEALTH_SPEED = 4000          # 检测用低速档，避免检测本身成为风险源
+# 检测用档位。取默认档位里最低的一档：检测属于开销，不应成为风险来源，也不该
+# 用一个高档位去判断「链路是否还活着」——那样一旦高档位本身不可靠，检测失败就
+# 无法区分「链路断了」与「这个档位不行」。
+DEFAULT_HEALTH_SPEED = 1000
+
+
+# ===========================================================================
+#  终端结论：PASS / FAIL 字符画
+# ===========================================================================
+# 只用 '#' 拼字母，5 行固定高度；每个字形右补空格后再拼接，保证列对齐。
+_FONT = {
+    "P": ("### ", "#  #", "### ", "#   ", "#   "),
+    "A": (" ## ", "#  #", "####", "#  #", "#  #"),
+    "S": (" ###", "#   ", " ## ", "   #", "### "),
+    "F": ("####", "#   ", "### ", "#   ", "#   "),
+    "I": ("###", " # ", " # ", " # ", "###"),
+    "L": ("#   ", "#   ", "#   ", "#   ", "####"),
+}
+
+
+def _banner(word: str) -> str:
+    rows = [""] * 5
+    for ch in word:
+        glyph = _FONT[ch]
+        for i in range(5):
+            rows[i] += glyph[i] + "  "
+    return "\n".join(r.rstrip() for r in rows)
+
+
+BANNER_PASS = _banner("PASS")
+BANNER_FAIL = _banner("FAIL")
+
+
+def print_verdict(passed: bool, note: str = "") -> None:
+    """在终端打印绿色 PASS / 红色 FAIL 字符画。
+
+    颜色只在真实终端上启用：重定向到文件时 ANSI 转义码会变成乱码，而日志文件
+    要能直接阅读。判定只看调用方给的布尔值，不做二次解释。
+    """
+    art = BANNER_PASS if passed else BANNER_FAIL
+    colored = False
+    try:
+        if sys.__stdout__.isatty():
+            colored = True if os.name != "nt" else m.enable_windows_vt()
+    except Exception:
+        colored = False
+    if colored:
+        color = "\033[32m" if passed else "\033[31m"
+        art = color + art + "\033[0m"
+    print()
+    print(art)
+    if note:
+        print(note)
+    print()
+
+
+def stop_spawned_openocd(proc) -> None:
+    """结束**本脚本自己拉起**的 OpenOCD。
+
+    按 PID 终止，不按进程名：本机可能同时有别的 OpenOCD 实例（别的板子、别的
+    会话），按名字杀会把它们一起弄死。Windows 上先试 `taskkill /PID <pid> /T`，
+    以便把 OpenOCD 可能派生的子进程一并收掉；其余平台用 terminate。
+
+    该函数是幂等的：进程已退出就什么也不做，因此可以同时挂在 atexit 与
+    finally 上（Ctrl-C、异常、正常收尾三条路径都能覆盖）。
+    """
+    if proc is None:
+        return
+    try:
+        if proc.poll() is not None:
+            return
+    except Exception:
+        return
+    try:
+        if os.name == "nt":
+            subprocess.run(["taskkill", "/PID", str(proc.pid), "/T", "/F"],
+                           capture_output=True, timeout=15)
+        else:
+            proc.terminate()
+    except Exception:
+        pass
+    try:
+        proc.wait(timeout=5)
+    except Exception:
+        try:
+            proc.kill()
+        except Exception:
+            pass
 
 
 def a32(x: int) -> str:
@@ -314,12 +397,27 @@ class Tele:
         self.t.drain()
         self.cur_speed = None       # 记录当前档位，避免重复下发
         self.ncmd = 0               # 累计命令数（用于定位"跑到第几条出问题"）
+        self.tcmd_ms = 0.0          # 上一条命令的往返耗时（不含 drain）
+        self.op_ms = 0.0            # 自上次 _begin() 起的命令耗时合计
         self._pat = {}
 
     # ---- 基础 ----
+    def _begin(self):
+        """开始一个新操作的计时区间（写一次、读一次各算一个操作）。"""
+        self.op_ms = 0.0
+
     def cmd(self, s, timeout=30.0, drain=True):
+        """执行一条命令，并（默认）排空 OpenOCD 广播的日志。
+
+        耗时只算命令本身的往返，**不含** drain：drain 会等 socket 静默
+        `quiet` 秒（默认 0.25 s），把它算进去会让每条命令都"至少几百毫秒"，
+        慢响应判据就再也区分不出真正的等超时。
+        """
         self.ncmd += 1
+        t0 = time.monotonic()
         r = m.cmd_clean(self.t, s, timeout=timeout)
+        self.tcmd_ms = (time.monotonic() - t0) * 1000.0
+        self.op_ms += self.tcmd_ms
         if drain:
             self.t.drain()
         return r
@@ -419,10 +517,11 @@ class Tele:
 def parse_modes(spec: str, speeds):
     """把 --modes 解析成 [(名称, 写kHz, 读kHz), ...]。
 
-    支持两种写法：
+    支持三种写法：
       * 名称：Wlo-Rlo / Wlo-Rhi / Whi-Rlo / Whi-Rhi / all
         名称里的 lo/hi 映射到 `--speeds` 的**最小/最大**档
-      * 显式：`写:读`，如 `1000:24000` 或 `1000:24000,name`（可省名称）
+      * `each`：每个档位自成收发（写读同速），适合先看「哪个档位开始出错」
+      * 显式：`写:读`，如 `1000:8000`
     """
     lo = min(speeds) if speeds else DEFAULT_HEALTH_SPEED
     hi = max(speeds) if speeds else DEFAULT_HEALTH_SPEED
@@ -437,6 +536,14 @@ def parse_modes(spec: str, speeds):
     for tok in spec.split(","):
         tok = tok.strip()
         if not tok:
+            continue
+        if tok.lower() == "each":
+            # 逐档自成收发：把失败定位到具体档位，而不是只看出一个「写读组合」
+            for khz in sorted(speeds):
+                name = "w%d-r%d" % (khz, khz)
+                if name not in seen:
+                    seen.add(name)
+                    out.append((name, khz, khz))
             continue
         if tok.lower() == "all":
             toks = ["Wlo-Rlo", "Wlo-Rhi", "Whi-Rlo", "Whi-Rhi"]
@@ -565,7 +672,7 @@ def run_addr_suite(tele: Tele, args, mode_name, w_khz, r_khz, width: Width):
 
 def main():
     ap = argparse.ArgumentParser(
-        description="SWD 内存读写压力测试（通用版）",
+        description="SWD 内存读写压力测试",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=__doc__.split("用法\n----")[-1] if "用法\n----" in __doc__ else None)
     ap.add_argument("host", nargs="?", default="127.0.0.1",
@@ -598,24 +705,26 @@ def main():
 
     # --- 速度 ---
     g = ap.add_argument_group("速度")
-    g.add_argument("--speeds", default="1000,4000,20000",
-                   help="逗号分隔的候选档位(kHz)。名称模式里的 lo/hi 取其中最小/最大")
-    g.add_argument("--modes", default="Wlo-Rhi,Whi-Rhi",
-                   help="逗号分隔：Wlo-Rlo/Wlo-Rhi/Whi-Rlo/Whi-Rhi/all 或 写:读")
+    g.add_argument("--speeds", default="1000,2000,4000,8000",
+                   help="逗号分隔的候选档位(kHz)。")
+    g.add_argument("--modes", default="each",
+                   help="逗号分隔：each（逐档同速收发）/ Wlo-Rlo/Wlo-Rhi/Whi-Rlo/Whi-Rhi/all 或 写:读")
     g.add_argument("--matrix", action="store_true",
                    help="忽略 --modes，生成 --speeds 的全部 (写,读) 组合")
-    g.add_argument("--hs-threshold", type=int, default=20000,
-                   help="多少 kHz 及以上算'高速'（用于远端确认与上限计数）")
+    g.add_argument("--hs-threshold", type=int, default=4000,
+                   help="多少 kHz 及以上算'高速'（仅用于--max-hs-ops 计数，不代表固件行为）")
     g.add_argument("--restore-speed", type=int, default=None,
                    help="每模式结束恢复到哪个档位（默认 --speeds 的最小值）")
 
     # --- 安全 ---
     g = ap.add_argument_group("安全")
-    g.add_argument("--abort-after", type=int, default=6, help="连续失败止损")
-    g.add_argument("--max-hs-ops", type=int, default=200,
-                   help="【硬上限】整轮测试中高速操作的最大次数")
-    g.add_argument("--yes-remote", action="store_true",
-                   help="对远端设备做高速测试的显式确认")
+    g.add_argument("--abort-after", type=int, default=6, help="连续失败后中止")
+    g.add_argument("--max-hs-ops", type=int, default=1000,
+                   help="【硬上限】整轮测试中高速操作的最大次数。默认 1000 足以让默认档位"
+                        "（约 290 次）与全套图案（约 400 次）跑完；设小会成为提前结束的约束")
+    g.add_argument("--slow-sample-ms", type=float, default=500.0,
+                   help="单条写/读命令的往返耗时阈值（不含脚本排空日志的固定等待）。"
+                        "超阈值的样本额外计数，用于把「固件等超时/未完成但不报错」与真正的值不符分开（0=不检查）")
     g.add_argument("--health-every", type=int, default=1,
                    help="每 N 个样本做一次 CPUID 检测（0 = 只在每模式首尾）")
     g.add_argument("--no-halt", action="store_true",
@@ -637,7 +746,7 @@ def main():
     # --- OpenOCD 生命周期 ---
     g = ap.add_argument_group("OpenOCD")
     g.add_argument("--spawn", action="store_true",
-                   help="自己拉起 OpenOCD（默认连已有实例，绝不杀别人的进程）")
+                   help="自己拉起 OpenOCD（默认为连接其它已在本地运行的 OpenOCD）")
     g.add_argument("--openocd", default=m.DEFAULT_OPENOCD, help="OpenOCD 可执行文件")
     g.add_argument("--interface", default=m.DEFAULT_INTERFACE, help="interface cfg 文件名")
     g.add_argument("--target", default=m.DEFAULT_TARGET, help="target cfg 文件名")
@@ -723,12 +832,6 @@ def main():
     modes = matrix_modes(speeds) if args.matrix else parse_modes(args.modes, speeds)
     if args.matrix:
         print("[模式] --matrix：生成 %d 个速度组合" % len(modes))
-    is_remote = args.host not in LOCAL_HOSTS
-    wants_hs = any(w >= args.hs_threshold or r >= args.hs_threshold for _, w, r in modes)
-    if is_remote and wants_hs and not args.yes_remote:
-        print("[拒绝执行] 对远端设备（%s）做高速测试。" % args.host)
-        print("           高速档曾把主机 USB 子系统拖死；确认重启责任人后加 --yes-remote。")
-        return 2
 
     pats, suite_desc = build_patterns(args, width)
 
@@ -771,7 +874,7 @@ def main():
     sys.stdout = Tee(out_txt)
 
     print("=" * 96)
-    print("SWD 内存压力测试（通用版）  %s:%d  tag=%s" % (args.host, args.port, args.tag))
+    print("SWD 内存压力测试  %s:%d  tag=%s" % (args.host, args.port, args.tag))
     print("  访问宽度=%s   地址=%#x%s" % (width, args.addr, "" if in_region else "  [区域外!]"))
     print("  档位=%s   模式=%s" % (speeds, ", ".join("%s(%d/%d)" % t for t in modes)))
     # 种子按无符号 32 位显示：负数会写成 "0x-0000ABC" 这种畸形值。
@@ -780,7 +883,9 @@ def main():
              "  [+地址相关]" if "addr" in suite_desc else ""))
     print("  高速阈值=%d kHz   高速操作上限=%d   连续失败止损=%d"
           % (args.hs_threshold, args.max_hs_ops, args.abort_after))
-    print("  检测间隔=%s   轮数=%d" % (args.health_every or "仅每模式首尾", args.rounds))
+    print("  慢响应阈值=%s   检测间隔=%s   轮数=%d"
+          % (("%.0f ms" % args.slow_sample_ms) if args.slow_sample_ms > 0 else "不检查",
+             args.health_every or "仅每模式首尾", args.rounds))
     print("=" * 96)
 
     # ---- 拉起 OpenOCD 或连接已有 ----
@@ -792,7 +897,10 @@ def main():
                              max_buf_size=args.max_buf_size)
         print("[OpenOCD] 自行拉起实例（端口 %d）…" % args.port)
         proc = m.spawn_openocd(ns, speeds, outdir)
-        print("[OpenOCD] 就绪（PID %d）" % proc.pid)
+        # 立刻挂 atexit：即使中途 Ctrl-C 或被异常打断，也能按 PID 收掉自己拉起的
+        # 实例，不会把它遗留成占着 4444 端口的孤儿进程。
+        atexit.register(stop_spawned_openocd, proc)
+        print("[OpenOCD] 就绪（PID %d，脚本结束时自动结束）" % proc.pid)
 
     tele = None
     try:
@@ -847,6 +955,7 @@ def main():
     results = {}
     hs_ops = 0
     hs_capped = False
+    body_completed = False
 
     try:
         for round_i in range(args.rounds):
@@ -858,6 +967,7 @@ def main():
                 print("#" * 96)
                 tally = Counter()
                 samples = []
+                slow_hits = []
                 consec = 0
                 n_ok = 0
 
@@ -869,11 +979,14 @@ def main():
 
                     # 写
                     tele.speed(w_khz)
+                    tele._begin()
                     if w_khz >= args.hs_threshold:
                         hs_ops += 1
                     okw, ew = tele.write(args.addr, W)
+                    w_ms = tele.op_ms
                     # 读
                     tele.speed(r_khz)
+                    tele._begin()
                     if r_khz >= args.hs_threshold:
                         hs_ops += 1
                     if args.read_len > 1:
@@ -881,10 +994,17 @@ def main():
                         R = got[0] if got else None
                     else:
                         R, er = tele.read(args.addr, 1)
+                    r_ms = tele.op_ms
                     if not args.keep_speed:
                         tele.speed(restore)
                     if args.interval:
                         time.sleep(args.interval)
+                    # 慢响应按**单条命令往返**计，写/读各取最大：
+                    # 它既可能是"固件在等超时/未完成"的特征，也可能只是主机态抖动，
+                    # 所以不进 total/fail，只作为旁证记录。
+                    cmd_ms = max(w_ms, r_ms)
+                    if args.slow_sample_ms > 0 and cmd_ms >= args.slow_sample_ms:
+                        slow_hits.append((name, cmd_ms))
 
                     if not okw:
                         cls, note = "写失败", "写命令报错：%s" % ew
@@ -925,7 +1045,7 @@ def main():
                         if not okg:
                             print("\n[中止] 中途检测失败（命令 #%d，图案 %s）：%s"
                                   % (tele.ncmd, name, hinfo))
-                            raise SystemExit(0)
+                            raise SystemExit(1)
                     if consec >= args.abort_after:
                         print("\n[止损] 连续失败 %d 次，结束该模式" % consec)
                         break
@@ -945,6 +1065,12 @@ def main():
                       % (total, nfail, hs_ops, tele.ncmd))
                 print("  分类: %s" % (", ".join("%s×%d" % kv for kv in tally.most_common())
                                       or "（无）"))
+                if slow_hits:
+                    print("  慢响应样本: %d 个（阈值 %.0f ms，最长 %.0f ms）"
+                          % (len(slow_hits), args.slow_sample_ms,
+                             max(ms for _n, ms in slow_hits)))
+                    for nm, ms in slow_hits[:5]:
+                        print("    %-12s %.0f ms" % (nm, ms))
                 if samples:
                     print("  失败样本:")
                     for s in samples[:25]:
@@ -961,7 +1087,8 @@ def main():
                 results[key] = {"mode": mode_name, "write_khz": w_khz, "read_khz": r_khz,
                                 "width": width.bits, "addr": a32(args.addr),
                                 "tally": dict(tally), "total": total, "fail": nfail,
-                                "samples": samples, "hs_ops": hs_ops, "capped": hs_capped}
+                                "samples": samples, "slow": len(slow_hits),
+                                "hs_ops": hs_ops, "capped": hs_capped}
 
                 tele.speed(restore)
                 okg, hinfo = tele.health(gate_addr, gate_expect)
@@ -969,12 +1096,13 @@ def main():
                 print("  模式末检测: %s" % ("✓ 链路正常" if alive else "✗ 链路异常 (%s)" % hinfo))
                 if not alive:
                     print("  [中止] 链路已坏，停止后续模式。")
-                    raise SystemExit(0)
+                    raise SystemExit(1)
                 if hs_capped:
                     print("\n[注意] 已因高速上限停止，后续模式未执行。")
                     break
             if hs_capped:
                 break
+        body_completed = True
     finally:
         try:
             if tele is not None:
@@ -983,7 +1111,19 @@ def main():
         except Exception:
             print("\n[警告] 档位恢复失败（连接可能已断）")
         if tele is not None:
+            # 自己拉的实例先发 shutdown：让 OpenOCD 自己收尾、刷新日志；
+            # 随后再用 PID 兜底（它可能已自行退出，stop() 是幂等的）。
+            try:
+                if proc is not None:
+                    tele.cmd("shutdown", timeout=10.0, drain=False)
+            except Exception:
+                pass
             tele.close()
+        if proc is not None:
+            stop_spawned_openocd(proc)
+            print("[OpenOCD] 已结束自建实例（PID %d）" % proc.pid)
+        if not body_completed:
+            print_verdict(False, "（测试未跑完：中途中止或链路异常）")
         # 这里只 flush 不 close：汇总与 JSON 还要在这些行之后打印。
         # 日志文件是行缓冲的，逐行已落盘，即便此刻被中断也不丢内容。
         try:
@@ -1013,20 +1153,31 @@ def main():
     print("  * 失败被归类为某个模型名 ⇒ 见 --list-models 里的规律，可据此定位")
     print("  * `读失败`（命令报错）而非 `值不符` ⇒ 多半是链路/固件层问题，不是位序问题")
     print("  * 出现 `写失败` ⇒ 先怀疑链路，因为写方向没有读校验")
+    print("  * 慢响应（单条命令往返超过 --slow-sample-ms）而不报错 ⇒ 先怀疑传输在等超时/未完成，")
+    print("    可用示波器对照 SWCLK 整帧，而不是当成位序问题")
     print("  * 判定'设备是否真挂死'：另开一个会话读 CPUID；读得到说明设备健康")
+
+    # 结论只认「全部图案全部通过」：有失败、一个样本都没跑（配置错）、或因为
+    # --max-hs-ops 只跑了一半，都不算 PASS。慢响应不影响结论（它可能只是主机态）。
+    passed = (all_fail == 0) and (all_tot > 0) and not hs_capped
+    if hs_capped:
+        verdict_note = "（因高速操作上限提前结束，未覆盖全部计划用例）"
+    elif all_tot <= 0:
+        verdict_note = "（没有执行任何用例）"
+    else:
+        verdict_note = "失败 %d / 总数 %d" % (all_fail, all_tot)
 
     out_json.write_text(json.dumps(
         {"host": args.host, "port": args.port, "addr": a32(args.addr),
          "width": width.bits, "speeds": speeds, "suites": suite_desc,
          "patterns": len(pats), "seed": args.seed,
-         "cpuid": ("%08x" % raw), "cpu": cpu_name, "results": results},
+         "cpuid": ("%08x" % raw), "cpu": cpu_name,
+         "verdict": "PASS" if passed else "FAIL", "results": results},
         ensure_ascii=False, indent=2), encoding="utf-8")
 
     print("\n结果 JSON: %s" % out_json)
     print("原始输出 : %s" % out_txt)
-    if proc is not None:
-        print("\n[提示] OpenOCD 由本脚本拉起（PID %d），不会自动结束；" % proc.pid)
-        print("       不需要时请自行结束它，不要误杀其它 OpenOCD 实例。")
+    print_verdict(passed, verdict_note)
     # 正常收尾时显式关掉日志文件；异常路径靠解释器退出时对 sys.stdout 的 flush，
     # 行缓冲已保证内容不丢。
     try:
@@ -1034,7 +1185,7 @@ def main():
         sys.stdout.close()
     except Exception:
         pass
-    return 1 if all_fail else 0
+    return 0 if passed else 1
 
 
 if __name__ == "__main__":
